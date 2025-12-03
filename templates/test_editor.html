@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if test %}Edit Test{% else %}New Test{% endif %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <style>
+    .question-block {
+      border-left: 4px solid #0d6efd;
+      background: #3a3a3a;
+      padding: 1.25rem;
+      margin-bottom: 1.5rem;
+      border-radius: 0.5rem;
+    }
+
+    .clickable-header {
+      cursor: pointer;
+      padding: 0.5rem;
+      border-radius: 0.3rem;
+    }
+
+    .clickable-header:hover {
+      background-color: #c7c7c7;
+    }
+
+    .form-control {
+      background-color: #6d6d6d;
+      color: #fff;
+      border: 1px solid #444;
+    }
+
+    .form-control:focus {
+      border-color: #0d6efd;
+      box-shadow: none;
+    }
+
+    .index-label {
+      min-width: 2rem;
+      font-weight: bold;
+      color: #0dcaf0;
+      text-align: right;
+    }
+
+    .correct-radio {
+      width: 1.4em;
+      height: 1.4em;
+      accent-color: #0dcaf0;
+      cursor: pointer;
+      margin-right: 0.8rem;
+    }
+
+    .option-row:hover {
+      background: rgba(13, 110, 253, 0.1);
+      border-radius: 0.4rem;
+    }
+
+    .empty-question {
+      border-left-color: #dc3545 !important;
+      animation: shake 0.5s;
+    }
+
+    @keyframes shake {
+
+      0%,
+      100% {
+        transform: translateX(0);
+      }
+
+      25% {
+        transform: translateX(-5px);
+      }
+
+      75% {
+        transform: translateX(5px);
+      }
+    }
+  </style>
+</head>
+
+<body class="bg-dark text-light">
+  <div class="container py-4">
+    <h2 class="mb-4 fw-semibold text-center">{% if test %}Edit Test{% else %}New Test{% endif %}</h2>
+
+    <!-- Top Controls -->
+    <div class="d-flex flex-wrap gap-3 align-items-center justify-content-center mb-5">
+      <a href="/" class="btn btn-outline-light btn-lg">Cancel</a>
+      <button type="button" class="btn btn-success btn-lg px-5" id="add-question">Add New Question</button>
+      <button type="submit" form="test-form" class="btn btn-primary btn-lg">Save Test</button>
+    </div>
+
+    <!-- Collapse Controls -->
+    <div class="text-center mb-4">
+      <button type="button" class="btn btn-outline-light btn-sm me-2" id="expand-all">Expand All</button>
+      <button type="button" class="btn btn-outline-light btn-sm" id="collapse-all">Collapse All</button>
+    </div>
+
+    <form id="test-form" method="post">
+      <div class="mb-4 text-center">
+        <input type="text" class="form-control form-control-lg d-inline-block w-75" name="title"
+          value="{{ test.title if test else '' }}" placeholder="Test Title" required>
+      </div>
+
+      <div id="questions-area">
+        {% if test and test.questions %}
+        {% for q in test.questions %}
+        {% set q_index = loop.index0 %}
+        <div class="question-block">
+          <div class="d-flex justify-content-between align-items-center clickable-header" data-bs-toggle="collapse"
+            data-bs-target="#q{{ q_index }}">
+            <strong>Question {{ loop.index }}</strong>
+            <span class="text-muted small">click to toggle</span>
+          </div>
+          <div class="collapse show" id="q{{ q_index }}">
+            <div class="mt-3">
+              <textarea class="form-control question-text" name="question_{{ q_index }}" rows="3"
+                required>{{ q.question }}</textarea>
+
+              <div class="option-container mt-3">
+                {% for opt in q.options %}
+                <div class="d-flex align-items-center mb-2 option-row p-2">
+                  <input type="radio" name="correct_{{ q_index }}" value="{{ loop.index0 }}" class="correct-radio" {% if
+                    q.correct_index==loop.index0 %}checked{% endif %}>
+                  <span class="index-label me-3">{{ loop.index }}</span>
+                  <input type="text" class="form-control flex-grow-1 me-2" name="option_{{ loop.index0 }}_{{ q_index }}"
+                    value="{{ opt }}" required>
+                  <button type="button" class="btn btn-sm btn-outline-danger remove-option-btn">×</button>
+                </div>
+                {% endfor %}
+              </div>
+
+              <button type="button" class="btn btn-outline-primary btn-sm add-option mt-2">Add Option</button>
+
+              <textarea class="form-control mt-3" name="explanation_{{ q_index }}" rows="2"
+                placeholder="Explanation (optional)">{{ q.explanation or '' }}</textarea>
+
+              <button type="button" class="btn btn-danger btn-sm mt-3 remove-question">Remove Question</button>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+      </div>
+    </form>
+  </div>
+
+  <!-- Remove Modal -->
+  <div class="modal fade" id="removeModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content bg-dark text-light">
+        <div class="modal-header">
+          <h5 class="modal-title text-danger">Remove Question?</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">This cannot be undone.</div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger" id="confirm-remove">Yes, Remove</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let removeTarget = null;
+    const modal = new bootstrap.Modal('#removeModal');
+
+    function reindexAll() {
+      const blocks = Array.from(document.querySelectorAll('.question-block'));
+
+      // --- 1) Capture which option is checked for each question BEFORE any renaming ---
+      const savedCorrectPerBlock = blocks.map(block => {
+        let savedIdx = 0; // default to first option
+        const radios = block.querySelectorAll('.correct-radio');
+        radios.forEach((r, i) => {
+          if (r.checked) savedIdx = i;
+        });
+        return savedIdx;
+      });
+
+      // --- 2) Reindex questions and options (this may temporarily mess with checked state) ---
+      blocks.forEach((block, qIdx) => {
+        // Question label
+        block.querySelector('.clickable-header strong').textContent = `Question ${qIdx + 1}`;
+
+        // Options
+        block.querySelectorAll('.option-row').forEach((row, optIdx) => {
+          const radio = row.querySelector('.correct-radio');
+          const textInput = row.querySelector('input[type="text"]');
+          const label = row.querySelector('.index-label');
+
+          label.textContent = optIdx + 1;
+          radio.name = `correct_${qIdx}`;          // backend expects correct_<questionIndex>
+          radio.value = optIdx;                   // 0-based index
+          textInput.name = `option_${optIdx}_${qIdx}`; // backend expects option_<optIdx>_<questionIdx>
+        });
+
+        // Question + explanation names
+        const qText = block.querySelector('.question-text');
+        if (qText) qText.name = `question_${qIdx}`;
+
+        const exp = block.querySelector('textarea[placeholder*="Explanation"]');
+        if (exp) exp.name = `explanation_${qIdx}`;
+      });
+
+      // --- 3) Restore checked radios AFTER renaming, using the saved indices ---
+      requestAnimationFrame(() => {
+        blocks.forEach((block, bIdx) => {
+          const radios = block.querySelectorAll('.correct-radio');
+          const savedIdx = savedCorrectPerBlock[bIdx] ?? 0;
+          if (radios[savedIdx]) {
+            radios[savedIdx].checked = true;
+          } else if (radios.length > 0) {
+            radios[0].checked = true; // safe fallback if something got deleted
+          }
+        });
+      });
+    }
+
+
+
+    document.getElementById('add-question').onclick = () => {
+      const container = document.getElementById('questions-area');
+      const total = container.children.length;
+
+      const block = document.createElement('div');
+      block.className = 'question-block';
+
+      block.innerHTML = `
+      <div class="d-flex justify-content-between align-items-center clickable-header" data-bs-toggle="collapse" data-bs-target="#q${total}">
+        <strong>Question ${total + 1}</strong>
+        <span class="text-muted small">click to toggle</span>
+      </div>
+      <div class="collapse show" id="q${total}">
+        <div class="mt-3">
+          <textarea class="form-control question-text" rows="3" required placeholder="Enter your question..."></textarea>
+          <div class="option-container mt-3">
+            <div class="d-flex align-items-center mb-2 option-row p-2">
+              <input type="radio" class="correct-radio" checked>
+              <span class="index-label me-3">1</span>
+              <input type="text" class="form-control flex-grow-1 me-2" required placeholder="Answer">
+              <button type="button" class="btn btn-sm btn-outline-danger remove-option-btn">×</button>
+            </div>
+            <div class="d-flex align-items-center mb-2 option-row p-2">
+              <input type="radio" class="correct-radio">
+              <span class="index-label me-3">2</span>
+              <input type="text" class="form-control flex-grow-1 me-2" required placeholder="Answer">
+              <button type="button" class="btn btn-sm btn-outline-danger remove-option-btn">×</button>
+            </div>
+          </div>
+          <button type="button" class="btn btn-outline-primary btn-sm add-option mt-2">Add Option</button>
+          <textarea class="form-control mt-3" rows="2" placeholder="Explanation (optional)"></textarea>
+          <button type="button" class="btn btn-danger btn-sm mt-3 remove-question">Remove Question</button>
+        </div>
+      </div>
+    `;
+
+      container.insertBefore(block, container.firstChild);
+      reindexAll();
+    };
+
+    document.addEventListener('click', e => {
+      if (e.target.classList.contains('remove-question')) {
+        removeTarget = e.target.closest('.question-block');
+        modal.show();
+      }
+      if (e.target.classList.contains('remove-option-btn')) {
+        const container = e.target.closest('.option-container');
+        if (container.children.length > 2) {
+          e.target.closest('.option-row').remove();
+          reindexAll();
+        }
+      }
+      if (e.target.classList.contains('add-option')) {
+        const block = e.target.closest('.question-block');
+        const container = block.querySelector('.option-container');
+        const count = container.children.length;
+
+        const row = document.createElement('div');
+        row.className = 'd-flex align-items-center mb-2 option-row p-2';
+        row.innerHTML = `
+        <input type="radio" class="correct-radio">
+        <span class="index-label me-3">${count + 1}</span>
+        <input type="text" class="form-control flex-grow-1 me-2" required placeholder="Answer">
+        <button type="button" class="btn btn-sm btn-outline-danger remove-option-btn">×</button>
+      `;
+
+        container.appendChild(row);
+        reindexAll();
+      }
+    });
+
+    document.getElementById('confirm-remove').onclick = () => {
+      if (removeTarget) {
+        removeTarget.remove();
+        removeTarget = null;
+        modal.hide();
+        reindexAll();
+      }
+    };
+
+    document.getElementById('expand-all').onclick = () =>
+      document.querySelectorAll('.collapse').forEach(c => bootstrap.Collapse.getOrCreateInstance(c).show());
+    document.getElementById('collapse-all').onclick = () =>
+      document.querySelectorAll('.collapse').forEach(c => bootstrap.Collapse.getOrCreateInstance(c).hide());
+
+    document.getElementById('test-form').onsubmit = e => {
+      let hasEmpty = false;
+      document.querySelectorAll('.question-block').forEach(block => {
+        if (!block.querySelector('.question-text').value.trim()) {
+          block.classList.add('empty-question');
+          hasEmpty = true;
+        } else {
+          block.classList.remove('empty-question');
+        }
+      });
+      if (hasEmpty) {
+        e.preventDefault();
+        alert('Please fill in all question texts before saving.');
+      } else {
+        reindexAll();
+      }
+    };
+
+    reindexAll();
+  </script>
+</body>
+
+</html>
