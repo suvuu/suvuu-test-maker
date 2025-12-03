@@ -36,7 +36,7 @@ source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install flask
 
 # 4. Run the app
-python3 app.py
+python app.py
 ```
 
 Open **[http://localhost:5000](http://localhost:5000)** in your browser. (or the ip of the device the app is running on followed by port 5000)
