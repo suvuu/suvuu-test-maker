@@ -29,14 +29,14 @@ git clone https://github.com/suvuu/suvuu-test-maker.git
 cd suvuu-test-maker
 
 # 2. Create a virtual environment (recommended)
-python3 -m venv venv
+python3 -m venv venv       # Windows: if command fails, install python by running 'python3'
 source venv/bin/activate   # Windows: venv\Scripts\activate
 
 # 3. Install Flask
 pip install flask
 
 # 4. Run the app
-python3 app.py
+python app.py
 ```
 
 Open **[http://localhost:5000](http://localhost:5000)** in your browser. (or the ip of the device the app is running on followed by port 5000)
