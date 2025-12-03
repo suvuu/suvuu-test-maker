@@ -1,7 +1,7 @@
 # **Suvuu’s Test Maker — Self-Hosted Quiz & Study Tool (Desktop + Mobile)**
 
 A lightweight, offline web app for creating, taking, and managing multiple-choice quizzes.
-Runs entirely on your machine — no accounts, no ads, no tracking. Perfect for students, exam prep, or anyone who wants a simple but effective local study tool.
+Runs entirely on your machine. Perfect for students, exam prep, or anyone who wants a simple but effective local study tool.
 
 Built to be **fast**, **minimal**, and **noob-friendly**.
 
@@ -117,5 +117,5 @@ Your data never leaves your machine.
 
 # Why This Exists
 
-Made to help students and/or anyone studying to create simple, local, no-bloat practice exams.
+Made to help students and/or anyone studying to create simple practice exams.
 Everything is local, private, and easy to modify, perfect for learning.
