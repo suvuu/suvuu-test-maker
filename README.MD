@@ -29,7 +29,7 @@ git clone https://github.com/suvuu/suvuu-test-maker.git
 cd suvuu-test-maker
 
 # 2. Create a virtual environment (recommended)
-python3 -m venv venv
+python3 -m venv venv       # Windows: if command fails, insall python by running 'python3' and once installed, run 'python3 -m venv venv'
 source venv/bin/activate   # Windows: venv\Scripts\activate
 
 # 3. Install Flask
