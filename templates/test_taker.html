@@ -1,88 +1,50 @@
 <!DOCTYPE html>
 <html>
 <head>
-<style>
-  #prev-btn:focus,
-  #next-btn:focus,
-  #check-btn:focus {
-    outline: none !important;
-    box-shadow: none !important;
-    background-color: transparent !important;
-  }
-</style>
-
+  <style>
+    #prev-btn:focus,
+    #next-btn:focus,
+    #check-btn:focus {
+      outline: none !important;
+      box-shadow: none !important;
+      background-color: transparent !important;
+    }
+  </style>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ test.title }}</title>
+  <title>Loading Test...</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <script>
-    const TEST_DATA = {{ test|tojson }};
-  </script>
   <script src="/static/test.js" defer></script>
 </head>
 <body class="bg-dark text-light">
- <div class="container py-4">
-  <h2 id="test-title">{{ test.title }}</h2>
-  <p id="progress"></p>
+  <div class="container py-4">
+    <h2 id="test-title">Loading...</h2>
+    <p id="progress"></p>
 
-  <!-- Form for submission -->
-  <form id="test-form" method="POST" action="/take/{{ test_id }}">
-    <div id="question-container"></div>
+    <form id="test-form" method="POST">
+      <div id="question-container"></div>
 
-    <div class="mt-3">
-      <button id="check-btn" type="button" class="btn btn-primary">Check Answer</button>
-      <div id="result-msg" class="mt-2"></div>
-    </div>
-
-    <div class="mt-4">
-      <div class="d-grid gap-3 mb-3">
-        <button id="prev-btn" type="button" class="btn btn-outline-light btn-lg">Previous</button>
-        <button id="next-btn" type="button" class="btn btn-outline-light btn-lg">Next</button>
+      <div class="mt-3">
+        <button id="check-btn" type="button" class="btn btn-primary">Check Answer</button>
+        <div id="result-msg" class="mt-2"></div>
       </div>
 
-      <div class="text-center mb-3">
-        <button id="finish-btn" type="submit" class="btn btn-success btn-lg">Finish Test</button>
+      <div class="mt-4">
+        <div class="d-grid gap-3 mb-3">
+          <button id="prev-btn" type="button" class="btn btn-outline-light btn-lg">Previous</button>
+          <button id="next-btn" type="button" class="btn btn-outline-light btn-lg">Next</button>
+        </div>
+
+        <div class="text-center mb-3">
+          <button id="finish-btn" type="submit" class="btn btn-success btn-lg">Finish Test</button>
+        </div>
+
+        <div class="text-center">
+          <a href="/" class="btn btn-secondary">Back to Home</a>
+        </div>
       </div>
 
-      <div class="text-center">
-        <a href="/" class="btn btn-secondary">Back to Home</a>
-      </div>
-    </div>
-
-    <!-- Hidden inputs -->
-    <div id="hidden-answers"></div>
-  </form>
-</div>
-
-<!-- THIS SCRIPT IS NOW OUTSIDE THE FORM AND PROPERLY STOPS SUBMISSION WHEN NEEDED -->
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  const finishBtn = document.getElementById("finish-btn");
-  const form = document.getElementById("test-form");
-
-  form.addEventListener("submit", function (e) {
-    // Count actually answered questions
-    const answered = Object.keys(userAnswers).filter(idx => 
-      userAnswers[idx] !== undefined && userAnswers[idx] !== null
-    ).length;
-    const total = QUESTIONS.length;
-
-    // Ask confirmation if not all questions answered
-    if (answered < total) {
-      const confirmSubmit = confirm(`You've answered ${answered} of ${total} questions.\n\nFinish the test anyway?`);
-      if (!confirmSubmit) {
-        e.preventDefault();   // This stops the form submission
-        return;
-      }
-    }
-
-    // Disable button to prevent double submission
-    finishBtn.disabled = true;
-    finishBtn.textContent = "Submitting...";
-    finishBtn.classList.remove("btn-success");
-    finishBtn.classList.add("btn-secondary");
-  });
-});
-</script>
-
+      <div id="hidden-answers"></div>
+    </form>
+  </div>
 </body>
 </html>

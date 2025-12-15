@@ -1,7 +1,124 @@
+let TEST_DATA = null;
+let QUESTIONS = [];
+let indexMap = [];
+let optionMap = [];
 let currentQuestionIndex = 0;
 let userAnswers = {};
 
-// --- SHUFFLE HELPERS ---
+const dom = {};
+
+document.addEventListener("DOMContentLoaded", () => {
+  cacheDom();
+  dom.questionContainer.innerHTML = '<p class="text-muted">Loading questions...</p>';
+  setControlsDisabled(true);
+
+  const testId = extractTestId();
+  if (testId === null) {
+    showFatalError("Invalid test URL. Unable to determine which test to load.");
+    return;
+  }
+
+  dom.form.action = `/take/${testId}`;
+  attachEventListeners();
+  loadTest(testId);
+});
+
+function cacheDom() {
+  dom.testTitle = document.getElementById("test-title");
+  dom.progress = document.getElementById("progress");
+  dom.questionContainer = document.getElementById("question-container");
+  dom.resultMsg = document.getElementById("result-msg");
+  dom.form = document.getElementById("test-form");
+  dom.checkBtn = document.getElementById("check-btn");
+  dom.prevBtn = document.getElementById("prev-btn");
+  dom.nextBtn = document.getElementById("next-btn");
+  dom.finishBtn = document.getElementById("finish-btn");
+}
+
+function attachEventListeners() {
+  dom.checkBtn.addEventListener("click", handleCheck);
+  dom.prevBtn.addEventListener("click", handlePrev);
+  dom.nextBtn.addEventListener("click", handleNext);
+  dom.form.addEventListener("submit", handleFormSubmit);
+}
+
+function extractTestId() {
+  const match = window.location.pathname.match(/\/take\/(\d+)/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+async function loadTest(testId) {
+  try {
+    const response = await fetch(`/api/tests/${testId}`);
+    if (!response.ok) {
+      throw new Error(response.status === 404 ? "Test not found." : "Failed to fetch test data.");
+    }
+
+    const data = await response.json();
+    setupTestData(data);
+
+    dom.testTitle.textContent = data.title || "Untitled Test";
+    document.title = data.title ? `${data.title} - TestMaker` : "TestMaker";
+
+    if (!QUESTIONS.length) {
+      dom.questionContainer.innerHTML = '<div class="alert alert-warning">No questions available in this test.</div>';
+      dom.progress.textContent = "";
+      return;
+    }
+
+    renderQuestion();
+    setControlsDisabled(false);
+  } catch (err) {
+    showFatalError(err.message || "Unable to load test.");
+  }
+}
+
+function setupTestData(data) {
+  TEST_DATA = data;
+  const questionList = Array.isArray(data.questions) ? data.questions : [];
+  const prepared = prepareQuestionState(questionList);
+
+  QUESTIONS = prepared.questions;
+  indexMap = prepared.indexMap;
+  optionMap = prepared.optionMap;
+
+  userAnswers = {};
+  currentQuestionIndex = 0;
+  clearResult();
+  initHiddenInputs(questionList.length);
+}
+
+function prepareQuestionState(questionList) {
+  const withShuffledOptions = questionList.map((question, origIdx) => {
+    const options = Array.isArray(question.options) ? question.options : [];
+    const order = options.map((_, idx) => idx);
+    shuffleInPlace(order);
+
+    const shuffledOptions = order.map(idx => options[idx]);
+    const correctIndex = order.indexOf(question.correct_index);
+
+    return {
+      ...question,
+      options: shuffledOptions,
+      correct_index: correctIndex,
+      __origIdx: origIdx,
+      __optionMap: order
+    };
+  });
+
+  shuffleInPlace(withShuffledOptions);
+
+  const mapQ = withShuffledOptions.map(q => q.__origIdx);
+  const mapOpt = withShuffledOptions.map(q => q.__optionMap);
+  const sanitizedQuestions = withShuffledOptions.map(({ __origIdx, __optionMap, ...rest }) => rest);
+
+  return {
+    questions: sanitizedQuestions,
+    indexMap: mapQ,
+    optionMap: mapOpt
+  };
+}
+
 function shuffleInPlace(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -10,90 +127,71 @@ function shuffleInPlace(arr) {
   return arr;
 }
 
-// --- BUILD SHUFFLED QUESTIONS + MAPS TO ORIGINAL INDICES ---
-const { QUESTIONS, indexMap, optionMap } = (() => {
-  // For each question, shuffle options; keep a map from shuffled -> original option index
-  const withShuffledOptions = TEST_DATA.questions.map((q, origIdx) => {
-    const order = q.options.map((_, i) => i);    // [0,1,2,...] original indices
-    shuffleInPlace(order);
-    const options = order.map(i => q.options[i]);
-    const correct_index = order.indexOf(q.correct_index); // remapped for client-side checking
-    return { ...q, options, correct_index, __origIdx: origIdx, __optionMap: order };
-  });
-
-  // Shuffle question order
-  shuffleInPlace(withShuffledOptions);
-
-  // Build maps aligned to the shuffled order
-  const mapQ = withShuffledOptions.map(q => q.__origIdx);       // shuffled question idx -> original question idx
-  const mapOpt = withShuffledOptions.map(q => q.__optionMap);   // for each shuffled question: shuffled option idx -> original option idx
-
-  // Strip helpers from QUESTIONS objects used for rendering
-  const qs = withShuffledOptions.map(({ __origIdx, __optionMap, ...rest }) => rest);
-
-  return { QUESTIONS: qs, indexMap: mapQ, optionMap: mapOpt };
-})();
-
-// --- HIDDEN INPUTS (ONE PER ORIGINAL QUESTION INDEX) ---
-function initHiddenInputs() {
+function initHiddenInputs(count) {
   const hidden = document.getElementById("hidden-answers");
   hidden.innerHTML = "";
-  for (let orig = 0; orig < TEST_DATA.questions.length; orig++) {
+  for (let i = 0; i < count; i++) {
     const input = document.createElement("input");
     input.type = "hidden";
-    input.name = `q${orig}`;      // IMPORTANT: original index naming for Flask
-    input.id = `hidden_q${orig}`;
+    input.name = `q${i}`;
+    input.id = `hidden_q${i}`;
     hidden.appendChild(input);
   }
 }
-initHiddenInputs();
 
-// sync hidden value for the *current shuffled index* -> original index
 function syncHiddenFor(shuffledIdx) {
-  const origQ = indexMap[shuffledIdx];             // original question index
-  const shuffledOpt = userAnswers[shuffledIdx];    // selected option in shuffled order
-  const hidden = document.getElementById(`hidden_q${origQ}`);
+  if (indexMap[shuffledIdx] === undefined) return;
 
+  const origQ = indexMap[shuffledIdx];
+  const hidden = document.getElementById(`hidden_q${origQ}`);
+  if (!hidden) return;
+
+  const shuffledOpt = userAnswers[shuffledIdx];
   if (shuffledOpt === undefined || shuffledOpt === null || shuffledOpt === "") {
     hidden.value = "";
-  } else {
-    const origOpt = optionMap[shuffledIdx][shuffledOpt]; // convert to original option index
-    hidden.value = String(origOpt);
+    return;
   }
+
+  const questionOptionMap = optionMap[shuffledIdx] || [];
+  const origOpt = questionOptionMap[shuffledOpt];
+  hidden.value = origOpt === undefined ? "" : String(origOpt);
 }
 
-
 function renderQuestion() {
-  const question = QUESTIONS[currentQuestionIndex]; // use shuffled
-  const container = document.getElementById("question-container");
-  container.innerHTML = "";
+  if (!QUESTIONS.length) {
+    dom.questionContainer.innerHTML = '<div class="alert alert-warning">No questions available.</div>';
+    dom.progress.textContent = "";
+    return;
+  }
 
-  const qEl = document.createElement("div");
-  qEl.classList.add("mb-4");
+  const question = QUESTIONS[currentQuestionIndex];
+  dom.questionContainer.innerHTML = "";
 
-  const qTitle = document.createElement("h4");
-  qTitle.textContent = `Question ${currentQuestionIndex + 1}: ${question.question}`;
-  qEl.appendChild(qTitle);
+  const wrapper = document.createElement("div");
+  wrapper.classList.add("mb-4");
+
+  const title = document.createElement("h4");
+  title.textContent = `Question ${currentQuestionIndex + 1}: ${question.question}`;
+  wrapper.appendChild(title);
 
   const optionsList = document.createElement("div");
-
   question.options.forEach((opt, idx) => {
     const optDiv = document.createElement("div");
     optDiv.classList.add("form-check", "my-2");
 
     const radio = document.createElement("input");
     radio.type = "radio";
-    radio.name = `q_ui_${currentQuestionIndex}`; // UI-only group name
+    radio.name = `q_ui_${currentQuestionIndex}`;
     radio.id = `q${currentQuestionIndex}_opt${idx}`;
     radio.value = idx;
     radio.classList.add("form-check-input");
 
     radio.addEventListener("change", () => {
-      userAnswers[currentQuestionIndex] = idx; // store by shuffled index
-      syncHiddenFor(currentQuestionIndex);     // write to hidden original-index input
+      userAnswers[currentQuestionIndex] = idx;
+      syncHiddenFor(currentQuestionIndex);
     });
 
-    if (userAnswers[currentQuestionIndex] == idx) {
+    if (userAnswers[currentQuestionIndex] === idx) {
       radio.checked = true;
     }
 
@@ -107,73 +205,118 @@ function renderQuestion() {
     optionsList.appendChild(optDiv);
   });
 
-  qEl.appendChild(optionsList);
-  container.appendChild(qEl);
+  wrapper.appendChild(optionsList);
+  dom.questionContainer.appendChild(wrapper);
 
   updateProgress();
   clearResult();
 }
 
 function updateProgress() {
-  const p = document.getElementById("progress");
-  p.textContent = `Question ${currentQuestionIndex + 1} of ${QUESTIONS.length}`;
+  if (!QUESTIONS.length) {
+    dom.progress.textContent = "";
+    return;
+  }
+  dom.progress.textContent = `Question ${currentQuestionIndex + 1} of ${QUESTIONS.length}`;
 }
 
 function clearResult() {
-  const resultBox = document.getElementById("result-msg");
-  resultBox.innerHTML = "";
-  resultBox.className = "mt-2";
+  dom.resultMsg.innerHTML = "";
+  dom.resultMsg.className = "mt-2";
 }
 
 function showResult(isCorrect, explanation) {
-  const resultBox = document.getElementById("result-msg");
-  resultBox.classList.remove("text-success", "text-danger");
+  dom.resultMsg.classList.remove("text-success", "text-danger");
+  const details = explanation ? `<br><em>Explanation:</em> ${explanation}` : "";
   if (isCorrect) {
-    resultBox.innerHTML = `<span class="text-success">✅ Correct!</span><br><em>Explanation:</em> ${explanation}`;
+    dom.resultMsg.innerHTML = `<span class="text-success">✅ Correct!</span>${details}`;
   } else {
-    resultBox.innerHTML = `<span class="text-danger">❌ Incorrect.</span><br><em>Explanation:</em> ${explanation}`;
+    dom.resultMsg.innerHTML = `<span class="text-danger">❌ Incorrect.</span>${details}`;
   }
 }
 
 function getSelectedAnswer() {
+  if (!QUESTIONS.length) return null;
   const selected = document.querySelector(`input[name="q_ui_${currentQuestionIndex}"]:checked`);
-  return selected ? parseInt(selected.value) : null;
+  return selected ? parseInt(selected.value, 10) : null;
 }
 
-document.getElementById("check-btn").addEventListener("click", () => {
+function handleCheck() {
+  if (!QUESTIONS.length) return;
   const selected = getSelectedAnswer();
   if (selected === null) {
     alert("Please select an answer.");
     return;
   }
+
   userAnswers[currentQuestionIndex] = selected;
   syncHiddenFor(currentQuestionIndex);
 
-  const correctIndex = QUESTIONS[currentQuestionIndex].correct_index; // from shuffled
-  const explanation = QUESTIONS[currentQuestionIndex].explanation;
+  const correctIndex = QUESTIONS[currentQuestionIndex].correct_index;
+  const explanation = QUESTIONS[currentQuestionIndex].explanation || "";
   showResult(selected === correctIndex, explanation);
-});
+}
 
-document.getElementById("prev-btn").addEventListener("click", () => {
+function handlePrev() {
   if (currentQuestionIndex > 0) {
-    currentQuestionIndex--;
+    currentQuestionIndex -= 1;
     renderQuestion();
   }
-});
+}
 
-document.getElementById("next-btn").addEventListener("click", () => {
+function handleNext() {
   if (currentQuestionIndex < QUESTIONS.length - 1) {
-    currentQuestionIndex++;
+    currentQuestionIndex += 1;
     renderQuestion();
   }
-});
+}
 
-// On submit, ensure all hidden inputs reflect current selections
-document.getElementById("test-form").addEventListener("submit", () => {
+function handleFormSubmit(e) {
+  if (!QUESTIONS.length) {
+    e.preventDefault();
+    alert("No questions to submit.");
+    return;
+  }
+
   for (let i = 0; i < QUESTIONS.length; i++) {
     syncHiddenFor(i);
   }
-});
 
-// Initial render
-renderQuestion();
+  let answered = 0;
+  for (let i = 0; i < QUESTIONS.length; i++) {
+    const val = userAnswers[i];
+    if (val !== undefined && val !== null && val !== "") {
+      answered += 1;
+    }
+  }
+
+  if (answered < QUESTIONS.length) {
+    const confirmSubmit = confirm(
+      `You've answered ${answered} of ${QUESTIONS.length} questions.\n\nFinish the test anyway?`
+    );
+    if (!confirmSubmit) {
+      e.preventDefault();
+      return;
+    }
+  }
+
+  dom.finishBtn.disabled = true;
+  dom.finishBtn.textContent = "Submitting...";
+  dom.finishBtn.classList.remove("btn-success");
+  dom.finishBtn.classList.add("btn-secondary");
+}
+
+function setControlsDisabled(disabled) {
+  [dom.checkBtn, dom.prevBtn, dom.nextBtn, dom.finishBtn].forEach(btn => {
+    if (btn) {
+      btn.disabled = disabled;
+    }
+  });
+}
+
+function showFatalError(message) {
+  setControlsDisabled(true);
+  dom.testTitle.textContent = "Error";
+  dom.questionContainer.innerHTML = `<div class="alert alert-danger">${message}</div>`;
+  dom.progress.textContent = "";
+}

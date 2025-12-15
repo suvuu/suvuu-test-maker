@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, send_file,
 import json
 import os
 import io
+from uuid import uuid4
 
 app = Flask(__name__)
 
@@ -9,6 +10,7 @@ DATA_FOLDER = "data"
 os.makedirs(DATA_FOLDER, exist_ok=True)
 
 DATA_FILE = os.path.join(DATA_FOLDER, "data.json")
+RESULT_CACHE = {}
 
 
 def load_data():
@@ -82,8 +84,7 @@ def parse_test_form(form):
 
 @app.route("/")
 def index():
-    data = load_data()
-    return render_template("index.html", tests=data["tests"])
+    return render_template("index.html")
 
 @app.route("/new", methods=["GET", "POST"])
 def new_test():
@@ -122,23 +123,68 @@ def take_test(test_id):
         correct_count = 0
 
         for i, q in enumerate(test["questions"]):
-            selected = request.form.get(f"q{i}")
-            correct = str(q["correct_index"])
+            selected_raw = request.form.get(f"q{i}")
+            try:
+                selected = int(selected_raw) if selected_raw not in (None, "") else None
+            except ValueError:
+                selected = None
+
+            correct = q["correct_index"]
+            is_correct = selected == correct
+
             user_answers.append({
                 "question": q["question"],
                 "options": q["options"],
                 "selected": selected,
                 "correct": correct,
-                "is_correct": selected == correct,
+                "is_correct": is_correct,
                 "explanation": q.get("explanation", "")
             })
-            if selected == correct:
+
+            if is_correct:
                 correct_count += 1
 
-        return render_template("results.html", answers=user_answers, score=correct_count,
-                               total=len(test["questions"]), test_title=test["title"])
+        result_payload = {
+            "test_title": test["title"],
+            "score": correct_count,
+            "total": len(test["questions"]),
+            "answers": user_answers
+        }
+
+        token = str(uuid4())
+        RESULT_CACHE[token] = result_payload
+        # Basic cleanup to prevent unlimited growth
+        while len(RESULT_CACHE) > 50:
+            oldest_key = next(iter(RESULT_CACHE))
+            RESULT_CACHE.pop(oldest_key, None)
+        return redirect(url_for("results_page", token=token))
 
     return render_template("test_taker.html", test=test, test_id=test_id)
+
+
+@app.route("/api/tests", methods=["GET"])
+def api_list_tests():
+    data = load_data()
+    tests = [
+        {
+            "id": idx,
+            "title": test.get("title", "Untitled"),
+            "question_count": len(test.get("questions", []))
+        }
+        for idx, test in enumerate(data["tests"])
+    ]
+    return jsonify({"tests": tests})
+
+
+@app.route("/api/tests/<int:test_id>")
+def api_get_test(test_id):
+    data = load_data()
+    if test_id < 0 or test_id >= len(data["tests"]):
+        return jsonify({"error": "Test not found"}), 404
+
+    test = data["tests"][test_id]
+    # include id for reference on the client
+    return jsonify({"id": test_id, **test})
 
 @app.route("/delete/<int:test_id>")
 def delete_test(test_id):
@@ -225,6 +271,20 @@ def import_tests():
         return jsonify({"success": False, "error": "Invalid JSON"}), 400
     except Exception as e:
         return jsonify({"success": False, "error": f"Error: {str(e)}"}), 5000
+
+
+@app.route("/results")
+@app.route("/results/<token>")
+def results_page(token=None):
+    return render_template("results.html")
+
+
+@app.route("/api/results/<token>")
+def api_results(token):
+    payload = RESULT_CACHE.get(token)
+    if payload is None:
+        return jsonify({"error": "Results not found"}), 404
+    return jsonify(payload)
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5000)
