@@ -63,11 +63,42 @@
       margin-top: 1rem;
       font-style: italic;
     }
+
+    @media (max-width: 768px) {
+      .score-box {
+        padding: 1.5rem;
+        border-radius: 1rem;
+      }
+      .big-score {
+        font-size: 3.2rem;
+      }
+      .question-item {
+        padding: 1.25rem;
+      }
+    }
+
+    @media (max-width: 576px) {
+      body {
+        padding: 0 0.5rem;
+      }
+      .score-box {
+        padding: 1.2rem;
+      }
+      .big-score {
+        font-size: 2.8rem;
+      }
+      .progress {
+        height: 18px;
+      }
+      .question-item {
+        padding: 1rem;
+      }
+    }
   </style>
   <script src="/static/results.js" defer></script>
 </head>
 <body class="bg-dark text-light">
-  <div class="container py-5" id="results-container">
+  <div class="container py-4 px-3 px-md-5" id="results-container">
     <div id="results-error" class="alert alert-danger d-none"></div>
 
     <div class="score-box shadow-lg" id="score-box">

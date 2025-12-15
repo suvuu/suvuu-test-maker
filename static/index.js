@@ -93,20 +93,21 @@ function createTestListItem(test) {
   info.appendChild(questionCount);
 
   const actions = document.createElement("div");
+  actions.className = "action-buttons d-flex flex-wrap gap-2 justify-content-end justify-content-md-start w-100 w-md-auto";
 
   const takeLink = document.createElement("a");
   takeLink.href = `/take/${test.id}`;
-  takeLink.className = "btn btn-sm btn-primary me-2";
+  takeLink.className = "btn btn-sm btn-primary me-2 flex-grow-1 flex-md-grow-0 w-100 w-md-auto";
   takeLink.textContent = "Take";
 
   const editLink = document.createElement("a");
   editLink.href = `/edit/${test.id}`;
-  editLink.className = "btn btn-sm btn-warning me-2";
+  editLink.className = "btn btn-sm btn-warning me-2 flex-grow-1 flex-md-grow-0 w-100 w-md-auto";
   editLink.textContent = "Edit";
 
   const deleteBtn = document.createElement("button");
   deleteBtn.type = "button";
-  deleteBtn.className = "btn btn-sm btn-danger";
+  deleteBtn.className = "btn btn-sm btn-danger flex-grow-1 flex-md-grow-0 w-100 w-md-auto";
   deleteBtn.textContent = "Delete";
   deleteBtn.addEventListener("click", () => showDeleteModal(test));
 

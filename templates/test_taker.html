@@ -2,12 +2,86 @@
 <html>
 <head>
   <style>
+    body {
+      background-color: #212529;
+      min-height: 100vh;
+      color: #e9ecef;
+    }
+    .test-card {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 1rem;
+      padding: 2rem;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    }
+    .question-shell {
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      min-height: 220px;
+    }
+    .control-panel {
+      background: rgba(0, 0, 0, 0.28);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+    }
+    .btn-glow {
+      transition: transform 0.15s ease, box-shadow 0.2s ease;
+    }
+    .btn-glow:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 0 18px rgba(13, 110, 253, 0.35);
+    }
+    .status-chip {
+      background: rgba(255, 255, 255, 0.08);
+      padding: 0.35rem 0.9rem;
+      border-radius: 999px;
+      font-size: 0.9rem;
+    }
+    #result-msg {
+      min-height: 40px;
+    }
     #prev-btn:focus,
     #next-btn:focus,
     #check-btn:focus {
       outline: none !important;
       box-shadow: none !important;
       background-color: transparent !important;
+    }
+
+    @media (max-width: 768px) {
+      .test-card {
+        padding: 1.5rem;
+      }
+      .control-panel {
+        padding: 1.25rem;
+      }
+      .status-chip {
+        width: 100%;
+        text-align: center;
+        margin-top: 0.75rem;
+      }
+      .question-shell {
+        padding: 1.25rem;
+      }
+      #result-msg {
+        width: 100%;
+      }
+    }
+
+    @media (max-width: 576px) {
+      .test-card {
+        padding: 1.25rem;
+        border-radius: 0.85rem;
+      }
+      .control-panel {
+        border-radius: 0.65rem;
+      }
+      .control-panel .btn-lg {
+        font-size: 1rem;
+      }
     }
   </style>
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,35 +90,48 @@
   <script src="/static/test.js" defer></script>
 </head>
 <body class="bg-dark text-light">
-  <div class="container py-4">
-    <h2 id="test-title">Loading...</h2>
-    <p id="progress"></p>
-
-    <form id="test-form" method="POST">
-      <div id="question-container"></div>
-
-      <div class="mt-3">
-        <button id="check-btn" type="button" class="btn btn-primary">Check Answer</button>
-        <div id="result-msg" class="mt-2"></div>
+  <div class="container py-4 px-3 px-md-5">
+    <div class="test-card">
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+        <div>
+          <p class="text-uppercase text-secondary mb-1 small">Current Test</p>
+          <h2 id="test-title" class="mb-0">Loading...</h2>
+        </div>
+        <div class="status-chip mt-3 mt-sm-0 text-center text-md-start" id="progress">Preparing...</div>
       </div>
 
-      <div class="mt-4">
-        <div class="d-grid gap-3 mb-3">
-          <button id="prev-btn" type="button" class="btn btn-outline-light btn-lg">Previous</button>
-          <button id="next-btn" type="button" class="btn btn-outline-light btn-lg">Next</button>
+      <form id="test-form" method="POST">
+        <div class="question-shell mb-4" id="question-container"></div>
+
+        <div class="control-panel">
+          <div class="d-flex flex-column flex-md-row gap-3 justify-content-between align-items-start align-items-md-center">
+            <button id="check-btn" type="button" class="btn btn-primary btn-glow flex-grow-1 w-100 w-md-auto">Check Answer</button>
+            <div id="result-msg" class="mt-2 mt-md-0 flex-grow-1"></div>
+          </div>
+
+          <hr class="text-white-50 my-4">
+
+          <div class="row g-3">
+            <div class="col-md-6 d-grid">
+              <button id="prev-btn" type="button" class="btn btn-outline-light btn-lg btn-glow w-100">Previous</button>
+            </div>
+            <div class="col-md-6 d-grid">
+              <button id="next-btn" type="button" class="btn btn-outline-light btn-lg btn-glow w-100">Next</button>
+            </div>
+          </div>
+
+          <div class="text-center mt-4">
+            <button id="finish-btn" type="submit" class="btn btn-success btn-lg px-4 px-md-5 w-100 w-md-auto btn-glow">Finish Test</button>
+          </div>
+
+          <div class="text-center mt-3">
+            <a href="/" class="btn btn-secondary btn-sm w-100 w-md-auto">Back to Home</a>
+          </div>
         </div>
 
-        <div class="text-center mb-3">
-          <button id="finish-btn" type="submit" class="btn btn-success btn-lg">Finish Test</button>
-        </div>
-
-        <div class="text-center">
-          <a href="/" class="btn btn-secondary">Back to Home</a>
-        </div>
-      </div>
-
-      <div id="hidden-answers"></div>
-    </form>
+        <div id="hidden-answers"></div>
+      </form>
+    </div>
   </div>
 </body>
 </html>

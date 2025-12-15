@@ -55,6 +55,9 @@
       background: rgba(13, 110, 253, 0.1);
       border-radius: 0.4rem;
     }
+    .option-row {
+      gap: 0.5rem;
+    }
 
     .empty-question {
       border-left-color: #dc3545 !important;
@@ -76,6 +79,39 @@
         transform: translateX(5px);
       }
     }
+
+    .top-controls .btn {
+      min-width: 190px;
+    }
+
+    @media (max-width: 992px) {
+      .question-block {
+        padding: 1rem;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .top-controls {
+        flex-direction: column;
+      }
+      .top-controls .btn {
+        width: 100%;
+      }
+      .container {
+        padding: 1.5rem 1rem;
+      }
+      .option-row {
+        flex-direction: column;
+        align-items: flex-start !important;
+      }
+      .index-label {
+        text-align: left;
+      }
+      .option-row input[type="text"] {
+        width: 100%;
+        margin: 0 !important;
+      }
+    }
   </style>
 </head>
 
@@ -84,7 +120,7 @@
     <h2 class="mb-4 fw-semibold text-center">{% if test %}Edit Test{% else %}New Test{% endif %}</h2>
 
     <!-- Top Controls -->
-    <div class="d-flex flex-wrap gap-3 align-items-center justify-content-center mb-5">
+    <div class="top-controls d-flex flex-wrap gap-3 align-items-center justify-content-center mb-5">
       <a href="/" class="btn btn-outline-light btn-lg">Cancel</a>
       <button type="button" class="btn btn-success btn-lg px-5" id="add-question">Add New Question</button>
       <button type="submit" form="test-form" class="btn btn-primary btn-lg">Save Test</button>
@@ -98,7 +134,7 @@
 
     <form id="test-form" method="post">
       <div class="mb-4 text-center">
-        <input type="text" class="form-control form-control-lg d-inline-block w-75" name="title"
+        <input type="text" class="form-control form-control-lg d-inline-block w-100 w-md-75" name="title"
           value="{{ test.title if test else '' }}" placeholder="Test Title" required>
       </div>
 
