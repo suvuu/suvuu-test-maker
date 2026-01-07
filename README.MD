@@ -62,7 +62,7 @@ All tests persist in the `./data` folder in the container.
 
 ---
 
-# 📁 Project Structure
+# Project Structure
 
 ```bash
 suvuu-test-maker/
