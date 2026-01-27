@@ -1,2 +1,20 @@
+# data
 data/data.json
+data/uploads/
+
+# venv
+venv/
+
+# python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# env / secrets
+.env
+.env.*
+
+# misc
 .DS_Store
+Thumbs.db

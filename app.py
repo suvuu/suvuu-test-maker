@@ -1,4 +1,5 @@
-from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify # type: ignore
+from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify, send_from_directory # type: ignore
+from werkzeug.utils import secure_filename
 import json
 import os
 import io
@@ -8,6 +9,9 @@ app = Flask(__name__)
 
 DATA_FOLDER = "data"
 os.makedirs(DATA_FOLDER, exist_ok=True)
+UPLOAD_FOLDER = os.path.join(DATA_FOLDER, "uploads")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
 DATA_FILE = os.path.join(DATA_FOLDER, "data.json")
 RESULT_CACHE = {}
@@ -23,7 +27,33 @@ def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
-def parse_test_form(form):
+def is_allowed_image(filename):
+    _, ext = os.path.splitext(filename)
+    return ext.lower() in ALLOWED_IMAGE_EXTENSIONS
+
+def save_uploaded_image(file_storage):
+    if not file_storage or not file_storage.filename:
+        return None
+    if not is_allowed_image(file_storage.filename):
+        return None
+    original = secure_filename(file_storage.filename)
+    _, ext = os.path.splitext(original)
+    filename = f"{uuid4().hex}{ext.lower()}"
+    path = os.path.join(UPLOAD_FOLDER, filename)
+    file_storage.save(path)
+    return filename
+
+def delete_image_file(filename):
+    if not filename:
+        return
+    path = os.path.join(UPLOAD_FOLDER, filename)
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+def parse_test_form(form, files):
     title = form.get('title', '').strip()
     questions = []
     idx = 0
@@ -34,9 +64,6 @@ def parse_test_form(form):
             break
 
         q = q.strip()
-        if not q:
-            idx += 1
-            continue
 
         # collect options
         opts = []
@@ -67,11 +94,28 @@ def parse_test_form(form):
 
         explanation = form.get(f'explanation_{idx}', '').strip()
 
+        existing_image = form.get(f'existing_image_{idx}', '').strip()
+        remove_image = form.get(f'remove_image_{idx}', '').strip().lower() == "on"
+        uploaded_file = files.get(f'image_{idx}')
+
+        image_filename = existing_image or ""
+        if remove_image:
+            image_filename = ""
+            delete_image_file(existing_image)
+
+        if uploaded_file and uploaded_file.filename:
+            new_image = save_uploaded_image(uploaded_file)
+            if new_image:
+                if existing_image and existing_image != new_image:
+                    delete_image_file(existing_image)
+                image_filename = new_image
+
         questions.append({
             "question": q,
             "options": opts,
             "correct_index": correct,
-            "explanation": explanation
+            "explanation": explanation,
+            "image": image_filename
         })
 
         idx += 1
@@ -90,7 +134,7 @@ def index():
 def new_test():
     if request.method == "POST":
         data = load_data()
-        test = parse_test_form(request.form)
+        test = parse_test_form(request.form, request.files)
         data["tests"].append(test)
         save_data(data)
         return redirect(url_for("index"))
@@ -103,7 +147,7 @@ def edit_test(test_id):
         return "Test not found", 404
 
     if request.method == "POST":
-        test = parse_test_form(request.form)
+        test = parse_test_form(request.form, request.files)
         data["tests"][test_id] = test
         save_data(data)
         return redirect(url_for("index"))
@@ -138,7 +182,8 @@ def take_test(test_id):
                 "selected": selected,
                 "correct": correct,
                 "is_correct": is_correct,
-                "explanation": q.get("explanation", "")
+                "explanation": q.get("explanation", ""),
+                "image": q.get("image", "")
             })
 
             if is_correct:
@@ -285,6 +330,10 @@ def api_results(token):
     if payload is None:
         return jsonify({"error": "Results not found"}), 404
     return jsonify(payload)
+
+@app.route("/uploads/<path:filename>")
+def uploaded_file(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5000)

@@ -21,6 +21,45 @@
       border: 1px solid rgba(255, 255, 255, 0.08);
       min-height: 220px;
     }
+    .question-image {
+      max-width: 100%;
+      max-height: 320px;
+      border-radius: 0.75rem;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: #1b1f24;
+      cursor: zoom-in;
+    }
+    .image-overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.85);
+      z-index: 1050;
+      padding: 1.5rem;
+    }
+    .image-overlay.show {
+      display: flex;
+    }
+    .image-overlay img {
+      max-width: 95vw;
+      max-height: 90vh;
+      border-radius: 0.75rem;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      transform: scale(1);
+      transition: transform 0.15s ease;
+    }
+    .image-overlay-controls {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      display: flex;
+      gap: 0.5rem;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 0.5rem;
+      border-radius: 999px;
+    }
     .control-panel {
       background: rgba(0, 0, 0, 0.28);
       border: 1px solid rgba(255, 255, 255, 0.08);
@@ -131,6 +170,14 @@
 
         <div id="hidden-answers"></div>
       </form>
+    </div>
+  </div>
+  <div id="image-overlay" class="image-overlay" aria-hidden="true" role="dialog">
+    <img id="image-overlay-img" alt="Zoomed question image">
+    <div class="image-overlay-controls">
+      <button type="button" class="btn btn-outline-light btn-sm" id="zoom-out-btn" aria-label="Zoom out">-</button>
+      <button type="button" class="btn btn-outline-light btn-sm" id="zoom-reset-btn" aria-label="Reset zoom">Reset</button>
+      <button type="button" class="btn btn-outline-light btn-sm" id="zoom-in-btn" aria-label="Zoom in">+</button>
     </div>
   </div>
 </body>

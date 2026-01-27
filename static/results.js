@@ -46,6 +46,13 @@ function renderAnswer(answer, idx) {
   questionText.className = "mb-3 fw-medium";
   questionText.textContent = answer.question || "Untitled question";
 
+  const imageBlock = answer.image ? document.createElement("img") : null;
+  if (imageBlock) {
+    imageBlock.className = "question-image mb-3";
+    imageBlock.alt = "Question image";
+    imageBlock.src = `/uploads/${encodeURIComponent(answer.image)}`;
+  }
+
   const yourAnswerBlock = document.createElement("div");
   yourAnswerBlock.className = "your-answer";
 
@@ -84,6 +91,9 @@ function renderAnswer(answer, idx) {
 
   wrapper.appendChild(header);
   wrapper.appendChild(questionText);
+  if (imageBlock) {
+    wrapper.appendChild(imageBlock);
+  }
   wrapper.appendChild(yourAnswerBlock);
   wrapper.appendChild(correctAnswerBlock);
 

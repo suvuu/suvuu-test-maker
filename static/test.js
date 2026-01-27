@@ -4,6 +4,7 @@ let indexMap = [];
 let optionMap = [];
 let currentQuestionIndex = 0;
 let userAnswers = {};
+let zoomScale = 1;
 
 const dom = {};
 
@@ -33,6 +34,11 @@ function cacheDom() {
   dom.prevBtn = document.getElementById("prev-btn");
   dom.nextBtn = document.getElementById("next-btn");
   dom.finishBtn = document.getElementById("finish-btn");
+  dom.imageOverlay = document.getElementById("image-overlay");
+  dom.imageOverlayImg = document.getElementById("image-overlay-img");
+  dom.zoomInBtn = document.getElementById("zoom-in-btn");
+  dom.zoomOutBtn = document.getElementById("zoom-out-btn");
+  dom.zoomResetBtn = document.getElementById("zoom-reset-btn");
 }
 
 function attachEventListeners() {
@@ -40,6 +46,48 @@ function attachEventListeners() {
   dom.prevBtn.addEventListener("click", handlePrev);
   dom.nextBtn.addEventListener("click", handleNext);
   dom.form.addEventListener("submit", handleFormSubmit);
+  if (dom.imageOverlay) {
+    dom.imageOverlay.addEventListener("click", closeImageViewer);
+  }
+  if (dom.imageOverlayImg) {
+    dom.imageOverlayImg.addEventListener("click", (e) => e.stopPropagation());
+  }
+  if (dom.zoomInBtn) {
+    dom.zoomInBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      adjustZoom(0.25);
+    });
+  }
+  if (dom.zoomOutBtn) {
+    dom.zoomOutBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      adjustZoom(-0.25);
+    });
+  }
+  if (dom.zoomResetBtn) {
+    dom.zoomResetBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      resetZoom();
+    });
+  }
+  if (dom.imageOverlay) {
+    dom.imageOverlay.addEventListener("wheel", handleZoomWheel, { passive: false });
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeImageViewer();
+      return;
+    }
+    if (dom.imageOverlay && dom.imageOverlay.classList.contains("show")) {
+      if (e.key === "+" || e.key === "=") {
+        adjustZoom(0.25);
+      } else if (e.key === "-" || e.key === "_") {
+        adjustZoom(-0.25);
+      } else if (e.key.toLowerCase() === "r") {
+        resetZoom();
+      }
+    }
+  });
 }
 
 function extractTestId() {
@@ -173,6 +221,15 @@ function renderQuestion() {
   const title = document.createElement("h4");
   title.textContent = `Question ${currentQuestionIndex + 1}: ${question.question}`;
   wrapper.appendChild(title);
+
+  if (question.image) {
+    const image = document.createElement("img");
+    image.className = "question-image my-3";
+    image.alt = "Question image";
+    image.src = `/uploads/${encodeURIComponent(question.image)}`;
+    image.addEventListener("click", () => openImageViewer(image.src, image.alt));
+    wrapper.appendChild(image);
+  }
 
   const optionsList = document.createElement("div");
   question.options.forEach((opt, idx) => {
@@ -319,4 +376,44 @@ function showFatalError(message) {
   dom.testTitle.textContent = "Error";
   dom.questionContainer.innerHTML = `<div class="alert alert-danger">${message}</div>`;
   dom.progress.textContent = "";
+}
+
+function openImageViewer(src, alt) {
+  if (!dom.imageOverlay || !dom.imageOverlayImg || !src) return;
+  dom.imageOverlayImg.src = src;
+  dom.imageOverlayImg.alt = alt || "Zoomed question image";
+  resetZoom();
+  dom.imageOverlay.classList.add("show");
+  dom.imageOverlay.setAttribute("aria-hidden", "false");
+}
+
+function closeImageViewer() {
+  if (!dom.imageOverlay || !dom.imageOverlayImg) return;
+  if (!dom.imageOverlay.classList.contains("show")) return;
+  dom.imageOverlay.classList.remove("show");
+  dom.imageOverlay.setAttribute("aria-hidden", "true");
+  dom.imageOverlayImg.src = "";
+}
+
+function applyZoom() {
+  if (!dom.imageOverlayImg) return;
+  dom.imageOverlayImg.style.transform = `scale(${zoomScale})`;
+}
+
+function adjustZoom(delta) {
+  const next = zoomScale + delta;
+  zoomScale = Math.min(4, Math.max(0.5, next));
+  applyZoom();
+}
+
+function resetZoom() {
+  zoomScale = 1;
+  applyZoom();
+}
+
+function handleZoomWheel(e) {
+  if (!dom.imageOverlay || !dom.imageOverlay.classList.contains("show")) return;
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? -0.15 : 0.15;
+  adjustZoom(delta);
 }
