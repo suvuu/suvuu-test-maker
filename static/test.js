@@ -5,12 +5,21 @@ let optionMap = [];
 let currentQuestionIndex = 0;
 let userAnswers = {};
 let zoomScale = 1;
+let panX = 0;
+let panY = 0;
+let isPanning = false;
+let panStartX = 0;
+let panStartY = 0;
 
 const dom = {};
 
 document.addEventListener("DOMContentLoaded", () => {
   cacheDom();
-  dom.questionContainer.innerHTML = '<p class="text-muted">Loading questions...</p>';
+  document.body.classList.remove("no-scroll");
+  window.addEventListener("pageshow", () => {
+    document.body.classList.remove("no-scroll");
+  });
+  setLoadingState(true);
   setControlsDisabled(true);
 
   const testId = extractTestId();
@@ -28,6 +37,7 @@ function cacheDom() {
   dom.testTitle = document.getElementById("test-title");
   dom.progress = document.getElementById("progress");
   dom.questionContainer = document.getElementById("question-container");
+  dom.questionContent = dom.questionContainer ? dom.questionContainer.querySelector(".question-content") : null;
   dom.resultMsg = document.getElementById("result-msg");
   dom.form = document.getElementById("test-form");
   dom.checkBtn = document.getElementById("check-btn");
@@ -46,11 +56,22 @@ function attachEventListeners() {
   dom.prevBtn.addEventListener("click", handlePrev);
   dom.nextBtn.addEventListener("click", handleNext);
   dom.form.addEventListener("submit", handleFormSubmit);
+  if (isTouchDevice()) {
+    if (dom.imageOverlay) {
+      dom.imageOverlay.remove();
+    }
+    return;
+  }
   if (dom.imageOverlay) {
     dom.imageOverlay.addEventListener("click", closeImageViewer);
+    dom.imageOverlay.addEventListener("touchstart", preventOverlayScroll, { passive: false });
+    dom.imageOverlay.addEventListener("touchmove", preventOverlayScroll, { passive: false });
+    dom.imageOverlay.addEventListener("touchend", closeImageViewer);
   }
   if (dom.imageOverlayImg) {
     dom.imageOverlayImg.addEventListener("click", (e) => e.stopPropagation());
+    dom.imageOverlayImg.addEventListener("pointerdown", handlePanStart);
+    dom.imageOverlayImg.addEventListener("dragstart", (e) => e.preventDefault());
   }
   if (dom.zoomInBtn) {
     dom.zoomInBtn.addEventListener("click", (e) => {
@@ -72,6 +93,10 @@ function attachEventListeners() {
   }
   if (dom.imageOverlay) {
     dom.imageOverlay.addEventListener("wheel", handleZoomWheel, { passive: false });
+    dom.imageOverlay.addEventListener("pointermove", handlePanMove);
+    dom.imageOverlay.addEventListener("pointerup", handlePanEnd);
+    dom.imageOverlay.addEventListener("pointercancel", handlePanEnd);
+    dom.imageOverlay.addEventListener("pointerleave", handlePanEnd);
   }
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
@@ -134,6 +159,7 @@ function setupTestData(data) {
   currentQuestionIndex = 0;
   clearResult();
   initHiddenInputs(questionList.length);
+  initQuestionShell();
 }
 
 function prepareQuestionState(questionList) {
@@ -209,29 +235,37 @@ function renderQuestion() {
   if (!QUESTIONS.length) {
     dom.questionContainer.innerHTML = '<div class="alert alert-warning">No questions available.</div>';
     dom.progress.textContent = "";
+    setLoadingState(false);
     return;
   }
 
-  const question = QUESTIONS[currentQuestionIndex];
-  dom.questionContainer.innerHTML = "";
-
-  const wrapper = document.createElement("div");
-  wrapper.classList.add("mb-4");
-
-  const title = document.createElement("h4");
-  title.textContent = `Question ${currentQuestionIndex + 1}: ${question.question}`;
-  wrapper.appendChild(title);
-
-  if (question.image) {
-    const image = document.createElement("img");
-    image.className = "question-image my-3";
-    image.alt = "Question image";
-    image.src = `/uploads/${encodeURIComponent(question.image)}`;
-    image.addEventListener("click", () => openImageViewer(image.src, image.alt));
-    wrapper.appendChild(image);
+  if (!dom.questionContent || !dom.questionTitle || !dom.optionsList) {
+    initQuestionShell();
   }
 
-  const optionsList = document.createElement("div");
+  const question = QUESTIONS[currentQuestionIndex];
+  dom.questionContent.style.opacity = "0";
+  dom.questionTitle.textContent = `Question ${currentQuestionIndex + 1}: ${question.question}`;
+
+  if (dom.questionImage) {
+    if (question.image) {
+      dom.questionImage.src = `/uploads/${encodeURIComponent(question.image)}`;
+      dom.questionImage.alt = "Question image";
+      dom.questionImage.classList.remove("d-none");
+      if (!isTouchDevice()) {
+        dom.questionImage.onclick = () => openImageViewer(dom.questionImage.src, dom.questionImage.alt);
+      } else {
+        dom.questionImage.onclick = null;
+      }
+    } else {
+      dom.questionImage.src = "";
+      dom.questionImage.classList.add("d-none");
+      dom.questionImage.onclick = null;
+    }
+  }
+
+  dom.optionsList.innerHTML = "";
+  const optionsFragment = document.createDocumentFragment();
   question.options.forEach((opt, idx) => {
     const optDiv = document.createElement("div");
     optDiv.classList.add("form-check", "my-2");
@@ -259,14 +293,16 @@ function renderQuestion() {
 
     optDiv.appendChild(radio);
     optDiv.appendChild(label);
-    optionsList.appendChild(optDiv);
+    optionsFragment.appendChild(optDiv);
   });
-
-  wrapper.appendChild(optionsList);
-  dom.questionContainer.appendChild(wrapper);
+  dom.optionsList.appendChild(optionsFragment);
 
   updateProgress();
   clearResult();
+  setLoadingState(false);
+  requestAnimationFrame(() => {
+    dom.questionContent.style.opacity = "1";
+  });
 }
 
 function updateProgress() {
@@ -325,6 +361,16 @@ function handleNext() {
   if (currentQuestionIndex < QUESTIONS.length - 1) {
     currentQuestionIndex += 1;
     renderQuestion();
+    return;
+  }
+  if (dom.finishBtn) {
+    dom.finishBtn.click();
+  } else if (dom.form) {
+    if (typeof dom.form.requestSubmit === "function") {
+      dom.form.requestSubmit();
+    } else {
+      dom.form.submit();
+    }
   }
 }
 
@@ -378,6 +424,36 @@ function showFatalError(message) {
   dom.progress.textContent = "";
 }
 
+function initQuestionShell() {
+  if (!dom.questionContainer) return;
+  if (!dom.questionContent) {
+    dom.questionContent = dom.questionContainer.querySelector(".question-content");
+  }
+  if (!dom.questionContent) {
+    dom.questionContent = document.createElement("div");
+    dom.questionContent.className = "question-content";
+    dom.questionContainer.appendChild(dom.questionContent);
+  }
+  if (!dom.questionTitle) {
+    dom.questionTitle = document.createElement("h4");
+    dom.questionContent.appendChild(dom.questionTitle);
+  }
+  if (!dom.questionImage) {
+    dom.questionImage = document.createElement("img");
+    dom.questionImage.className = "question-image my-3 d-none";
+    dom.questionContent.appendChild(dom.questionImage);
+  }
+  if (!dom.optionsList) {
+    dom.optionsList = document.createElement("div");
+    dom.questionContent.appendChild(dom.optionsList);
+  }
+}
+
+function setLoadingState(isLoading) {
+  if (!dom.questionContainer) return;
+  dom.questionContainer.classList.toggle("loading", isLoading);
+}
+
 function openImageViewer(src, alt) {
   if (!dom.imageOverlay || !dom.imageOverlayImg || !src) return;
   dom.imageOverlayImg.src = src;
@@ -385,6 +461,7 @@ function openImageViewer(src, alt) {
   resetZoom();
   dom.imageOverlay.classList.add("show");
   dom.imageOverlay.setAttribute("aria-hidden", "false");
+  document.body.classList.add("no-scroll");
 }
 
 function closeImageViewer() {
@@ -393,11 +470,12 @@ function closeImageViewer() {
   dom.imageOverlay.classList.remove("show");
   dom.imageOverlay.setAttribute("aria-hidden", "true");
   dom.imageOverlayImg.src = "";
+  document.body.classList.remove("no-scroll");
 }
 
 function applyZoom() {
   if (!dom.imageOverlayImg) return;
-  dom.imageOverlayImg.style.transform = `scale(${zoomScale})`;
+  dom.imageOverlayImg.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomScale})`;
 }
 
 function adjustZoom(delta) {
@@ -408,6 +486,8 @@ function adjustZoom(delta) {
 
 function resetZoom() {
   zoomScale = 1;
+  panX = 0;
+  panY = 0;
   applyZoom();
 }
 
@@ -416,4 +496,48 @@ function handleZoomWheel(e) {
   e.preventDefault();
   const delta = e.deltaY > 0 ? -0.15 : 0.15;
   adjustZoom(delta);
+}
+
+function handlePanStart(e) {
+  if (!dom.imageOverlay || !dom.imageOverlay.classList.contains("show")) return;
+  if (!dom.imageOverlayImg) return;
+  if (e.pointerType && e.pointerType !== "mouse") return;
+  isPanning = true;
+  panStartX = e.clientX - panX;
+  panStartY = e.clientY - panY;
+  dom.imageOverlayImg.classList.add("dragging");
+  dom.imageOverlayImg.setPointerCapture(e.pointerId);
+}
+
+function handlePanMove(e) {
+  if (!isPanning) return;
+  panX = e.clientX - panStartX;
+  panY = e.clientY - panStartY;
+  applyZoom();
+}
+
+function handlePanEnd(e) {
+  if (!isPanning) return;
+  isPanning = false;
+  if (dom.imageOverlayImg) {
+    dom.imageOverlayImg.classList.remove("dragging");
+    try {
+      dom.imageOverlayImg.releasePointerCapture(e.pointerId);
+    } catch (_) {
+      // ignore if not captured
+    }
+  }
+}
+
+function preventOverlayScroll(e) {
+  if (!dom.imageOverlay || !dom.imageOverlay.classList.contains("show")) return;
+  e.preventDefault();
+}
+
+function isTouchDevice() {
+  return (
+    "ontouchstart" in window ||
+    (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) ||
+    (navigator.msMaxTouchPoints && navigator.msMaxTouchPoints > 0)
+  );
 }

@@ -18,6 +18,49 @@
     #tests-list .list-group-item strong {
       font-size: 1.05rem;
     }
+    .action-buttons {
+      align-items: stretch;
+    }
+    .action-buttons .btn {
+      min-width: 140px;
+      min-height: 38px;
+      text-align: center;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    @media (min-width: 768px) {
+      .action-buttons .btn {
+        width: 140px;
+      }
+    }
+    .skeleton {
+      position: relative;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+    }
+    .skeleton::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: -150px;
+      height: 100%;
+      width: 150px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+      animation: shimmer 1.2s infinite;
+    }
+    @keyframes shimmer {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(300px); }
+    }
+    .skeleton-row {
+      height: 22px;
+      margin-bottom: 12px;
+    }
+    .skeleton-row:last-child {
+      margin-bottom: 0;
+    }
     @media (max-width: 768px) {
       .home-panel {
         padding: 1.5rem;
@@ -55,7 +98,12 @@
         <div id="import-status" class="text-light ms-md-3 text-center text-md-start w-100 w-md-auto"></div>
       </div>
 
-      <p id="tests-empty" class="text-muted">Loading tests...</p>
+      <p id="tests-empty" class="text-muted d-none">Loading tests...</p>
+      <div id="tests-skeleton" class="mt-3">
+        <div class="skeleton skeleton-row"></div>
+        <div class="skeleton skeleton-row" style="width: 90%;"></div>
+        <div class="skeleton skeleton-row" style="width: 80%;"></div>
+      </div>
       <ul id="tests-list" class="list-group d-none"></ul>
     </div>
   </div>

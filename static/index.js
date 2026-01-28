@@ -10,6 +10,7 @@ document.addEventListener("DOMContentLoaded", () => {
 function cacheDom() {
   dom.testsList = document.getElementById("tests-list");
   dom.testsEmpty = document.getElementById("tests-empty");
+  dom.testsSkeleton = document.getElementById("tests-skeleton");
   dom.importBtn = document.getElementById("import-btn");
   dom.importFileInput = document.getElementById("import-file-input");
   dom.importStatus = document.getElementById("import-status");
@@ -42,7 +43,7 @@ function initDeleteModal() {
 }
 
 async function loadTests() {
-  showTestsMessage("Loading tests...");
+  setSkeletonVisible(true);
   try {
     const response = await fetch("/api/tests");
     if (!response.ok) {
@@ -52,11 +53,13 @@ async function loadTests() {
     renderTests(Array.isArray(data.tests) ? data.tests : []);
   } catch (err) {
     console.error("Failed to load tests:", err);
+    setSkeletonVisible(false);
     showTestsMessage("Unable to load tests. Please refresh.", true);
   }
 }
 
 function renderTests(tests) {
+  setSkeletonVisible(false);
   if (!tests.length) {
     dom.testsList.classList.add("d-none");
     showTestsMessage("No tests available. Create one or import a backup!");
@@ -65,11 +68,34 @@ function renderTests(tests) {
 
   dom.testsEmpty.classList.add("d-none");
   dom.testsList.classList.remove("d-none");
-  dom.testsList.innerHTML = "";
+  const existing = new Map();
+  dom.testsList.querySelectorAll("li[data-test-id]").forEach(li => {
+    existing.set(li.dataset.testId, li);
+  });
+
+  const nextIds = new Set();
+  const fragment = document.createDocumentFragment();
 
   tests.forEach(test => {
-    dom.testsList.appendChild(createTestListItem(test));
+    const id = String(test.id);
+    nextIds.add(id);
+    const current = existing.get(id);
+    if (current) {
+      updateTestListItem(current, test);
+      fragment.appendChild(current);
+    } else {
+      fragment.appendChild(createTestListItem(test));
+    }
   });
+
+  existing.forEach((li, id) => {
+    if (!nextIds.has(id)) {
+      li.remove();
+    }
+  });
+
+  dom.testsList.innerHTML = "";
+  dom.testsList.appendChild(fragment);
 }
 
 function showTestsMessage(message, isError = false) {
@@ -82,12 +108,14 @@ function showTestsMessage(message, isError = false) {
 function createTestListItem(test) {
   const li = document.createElement("li");
   li.className = "list-group-item bg-secondary text-light d-flex justify-content-between align-items-center mb-2";
+  li.dataset.testId = test.id;
 
   const info = document.createElement("div");
   const title = document.createElement("strong");
+  title.className = "test-title";
   title.textContent = test.title || "Untitled Test";
   const questionCount = document.createElement("span");
-  questionCount.className = "ms-2";
+  questionCount.className = "ms-2 test-count";
   questionCount.textContent = `(${test.question_count || 0} questions)`;
   info.appendChild(title);
   info.appendChild(questionCount);
@@ -97,17 +125,17 @@ function createTestListItem(test) {
 
   const takeLink = document.createElement("a");
   takeLink.href = `/take/${test.id}`;
-  takeLink.className = "btn btn-sm btn-primary me-2 flex-grow-1 flex-md-grow-0 w-100 w-md-auto";
+  takeLink.className = "btn btn-sm btn-primary flex-grow-1 flex-md-grow-0 test-take";
   takeLink.textContent = "Take";
 
   const editLink = document.createElement("a");
   editLink.href = `/edit/${test.id}`;
-  editLink.className = "btn btn-sm btn-warning me-2 flex-grow-1 flex-md-grow-0 w-100 w-md-auto";
+  editLink.className = "btn btn-sm btn-warning flex-grow-1 flex-md-grow-0 test-edit";
   editLink.textContent = "Edit";
 
   const deleteBtn = document.createElement("button");
   deleteBtn.type = "button";
-  deleteBtn.className = "btn btn-sm btn-danger flex-grow-1 flex-md-grow-0 w-100 w-md-auto";
+  deleteBtn.className = "btn btn-sm btn-danger flex-grow-1 flex-md-grow-0 test-delete";
   deleteBtn.textContent = "Delete";
   deleteBtn.addEventListener("click", () => showDeleteModal(test));
 
@@ -119,6 +147,40 @@ function createTestListItem(test) {
   li.appendChild(actions);
 
   return li;
+}
+
+function updateTestListItem(li, test) {
+  const title = li.querySelector(".test-title");
+  if (title) {
+    title.textContent = test.title || "Untitled Test";
+  }
+  const count = li.querySelector(".test-count");
+  if (count) {
+    count.textContent = `(${test.question_count || 0} questions)`;
+  }
+  const takeLink = li.querySelector(".test-take");
+  if (takeLink) {
+    takeLink.href = `/take/${test.id}`;
+  }
+  const editLink = li.querySelector(".test-edit");
+  if (editLink) {
+    editLink.href = `/edit/${test.id}`;
+  }
+  const deleteBtn = li.querySelector(".test-delete");
+  if (deleteBtn) {
+    deleteBtn.onclick = () => showDeleteModal(test);
+  }
+  li.dataset.testId = test.id;
+}
+
+function setSkeletonVisible(visible) {
+  if (dom.testsSkeleton) {
+    dom.testsSkeleton.classList.toggle("d-none", !visible);
+  }
+  if (visible) {
+    if (dom.testsList) dom.testsList.classList.add("d-none");
+    if (dom.testsEmpty) dom.testsEmpty.classList.add("d-none");
+  }
 }
 
 function showDeleteModal(test) {

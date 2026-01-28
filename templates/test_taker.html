@@ -21,6 +21,56 @@
       border: 1px solid rgba(255, 255, 255, 0.08);
       min-height: 220px;
     }
+    .skeleton {
+      position: relative;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+    }
+    .skeleton::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: -150px;
+      height: 100%;
+      width: 150px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+      animation: shimmer 1.2s infinite;
+    }
+    @keyframes shimmer {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(300px); }
+    }
+    .skeleton-line {
+      height: 16px;
+      margin-bottom: 12px;
+    }
+    .skeleton-title {
+      height: 22px;
+      margin-bottom: 16px;
+      width: 70%;
+    }
+    .skeleton-option {
+      height: 18px;
+      margin-bottom: 10px;
+      width: 85%;
+    }
+    .skeleton-image {
+      height: 160px;
+      margin: 14px 0;
+    }
+    .question-shell.loading .question-content {
+      display: none;
+    }
+    .question-shell.loading .question-skeleton {
+      display: block;
+    }
+    .question-skeleton {
+      display: none;
+    }
+    .question-content {
+      transition: opacity 0.12s ease;
+    }
     .question-image {
       max-width: 100%;
       max-height: 320px;
@@ -28,6 +78,9 @@
       border: 1px solid rgba(255, 255, 255, 0.15);
       background: #1b1f24;
       cursor: zoom-in;
+    }
+    body.no-scroll {
+      overflow: hidden;
     }
     .image-overlay {
       position: fixed;
@@ -49,6 +102,13 @@
       border: 1px solid rgba(255, 255, 255, 0.2);
       transform: scale(1);
       transition: transform 0.15s ease;
+      cursor: grab;
+      user-select: none;
+      -webkit-user-drag: none;
+      -webkit-touch-callout: none;
+    }
+    .image-overlay img.dragging {
+      cursor: grabbing;
     }
     .image-overlay-controls {
       position: absolute;
@@ -73,6 +133,17 @@
       transform: translateY(-1px);
       box-shadow: 0 0 18px rgba(13, 110, 253, 0.35);
     }
+    .btn-uniform {
+      min-height: 44px;
+    }
+    .btn-match {
+      width: 100%;
+    }
+    @media (min-width: 768px) {
+      .btn-match {
+        width: 100%;
+      }
+    }
     .status-chip {
       background: rgba(255, 255, 255, 0.08);
       padding: 0.35rem 0.9rem;
@@ -80,7 +151,7 @@
       font-size: 0.9rem;
     }
     #result-msg {
-      min-height: 40px;
+      min-height: 0;
     }
     #prev-btn:focus,
     #next-btn:focus,
@@ -122,6 +193,12 @@
         font-size: 1rem;
       }
     }
+
+    @media (min-width: 1200px) {
+      .container {
+        max-width: 1200px;
+      }
+    }
   </style>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Loading Test...</title>
@@ -140,15 +217,28 @@
       </div>
 
       <form id="test-form" method="POST">
-        <div class="question-shell mb-4" id="question-container"></div>
+        <div class="question-shell mb-4 loading" id="question-container">
+          <div class="question-skeleton">
+            <div class="skeleton skeleton-title"></div>
+            <div class="skeleton skeleton-image"></div>
+            <div class="skeleton skeleton-option"></div>
+            <div class="skeleton skeleton-option"></div>
+            <div class="skeleton skeleton-option" style="width: 60%;"></div>
+          </div>
+          <div class="question-content"></div>
+        </div>
 
         <div class="control-panel">
-          <div class="d-flex flex-column flex-md-row gap-3 justify-content-between align-items-start align-items-md-center">
-            <button id="check-btn" type="button" class="btn btn-primary btn-glow flex-grow-1 w-100 w-md-auto">Check Answer</button>
-            <div id="result-msg" class="mt-2 mt-md-0 flex-grow-1"></div>
+          <div class="row g-2 align-items-center">
+            <div class="col-md-12 d-grid">
+              <button id="check-btn" type="button" class="btn btn-primary btn-lg btn-glow btn-uniform btn-match">Check Answer</button>
+            </div>
+            <div class="col-md-12">
+              <div id="result-msg" class="mt-0"></div>
+            </div>
           </div>
 
-          <hr class="text-white-50 my-4">
+          <hr class="text-white-50 my-3">
 
           <div class="row g-3">
             <div class="col-md-6 d-grid">
@@ -159,12 +249,14 @@
             </div>
           </div>
 
-          <div class="text-center mt-4">
-            <button id="finish-btn" type="submit" class="btn btn-success btn-lg px-4 px-md-5 w-100 w-md-auto btn-glow">Finish Test</button>
+          <div class="row g-3 mt-4 justify-content-center">
+            <div class="col-md-12 d-grid">
+              <button id="finish-btn" type="submit" class="btn btn-success btn-lg btn-glow btn-match">Finish Test</button>
+            </div>
           </div>
 
           <div class="text-center mt-3">
-            <a href="/" class="btn btn-secondary btn-sm w-100 w-md-auto">Back to Home</a>
+            <a href="/" class="btn btn-secondary btn-uniform w-100 w-md-auto">Back to Home</a>
           </div>
         </div>
 
@@ -173,7 +265,7 @@
     </div>
   </div>
   <div id="image-overlay" class="image-overlay" aria-hidden="true" role="dialog">
-    <img id="image-overlay-img" alt="Zoomed question image">
+    <img id="image-overlay-img" alt="Zoomed question image" draggable="false">
     <div class="image-overlay-controls">
       <button type="button" class="btn btn-outline-light btn-sm" id="zoom-out-btn" aria-label="Zoom out">-</button>
       <button type="button" class="btn btn-outline-light btn-sm" id="zoom-reset-btn" aria-label="Reset zoom">Reset</button>
