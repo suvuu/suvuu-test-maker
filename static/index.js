@@ -3,8 +3,10 @@ const dom = {};
 document.addEventListener("DOMContentLoaded", () => {
   cacheDom();
   attachImportHandlers();
+  attachAiConfigHandlers();
   initDeleteModal();
   loadTests();
+  loadAiConfig();
 });
 
 function cacheDom() {
@@ -14,6 +16,10 @@ function cacheDom() {
   dom.importBtn = document.getElementById("import-btn");
   dom.importFileInput = document.getElementById("import-file-input");
   dom.importStatus = document.getElementById("import-status");
+  dom.ollamaUrl = document.getElementById("ollama-url");
+  dom.ollamaModel = document.getElementById("ollama-model");
+  dom.saveAiConfig = document.getElementById("save-ai-config");
+  dom.aiConfigStatus = document.getElementById("ai-config-status");
   dom.deleteModal = document.getElementById("deleteModal");
   dom.deleteTitle = document.getElementById("testTitlePreview");
   dom.deleteConfirm = document.getElementById("confirmDeleteBtn");
@@ -37,6 +43,11 @@ function attachImportHandlers() {
   });
 }
 
+function attachAiConfigHandlers() {
+  if (!dom.saveAiConfig) return;
+  dom.saveAiConfig.addEventListener("click", saveAiConfig);
+}
+
 function initDeleteModal() {
   if (!dom.deleteModal) return;
   dom.deleteModalInstance = new bootstrap.Modal(dom.deleteModal);
@@ -55,6 +66,57 @@ async function loadTests() {
     console.error("Failed to load tests:", err);
     setSkeletonVisible(false);
     showTestsMessage("Unable to load tests. Please refresh.", true);
+  }
+}
+
+async function loadAiConfig() {
+  if (!dom.ollamaUrl || !dom.ollamaModel) return;
+  try {
+    const response = await fetch("/api/ai-config");
+    if (!response.ok) {
+      throw new Error("Failed to load AI config");
+    }
+    const data = await response.json();
+    dom.ollamaUrl.value = data.ollama_url || "";
+    dom.ollamaModel.value = data.ollama_model || "";
+  } catch (err) {
+    if (dom.aiConfigStatus) {
+      dom.aiConfigStatus.textContent = "Unable to load AI settings.";
+      dom.aiConfigStatus.className = "text-warning small";
+    }
+  }
+}
+
+async function saveAiConfig() {
+  if (!dom.ollamaUrl || !dom.ollamaModel || !dom.aiConfigStatus) return;
+  const ollamaUrl = dom.ollamaUrl.value.trim();
+  const ollamaModel = dom.ollamaModel.value.trim();
+  if (!ollamaUrl || !ollamaModel) {
+    dom.aiConfigStatus.textContent = "Both URL and model are required.";
+    dom.aiConfigStatus.className = "text-warning small";
+    return;
+  }
+
+  dom.aiConfigStatus.textContent = "Saving...";
+  dom.aiConfigStatus.className = "text-info small";
+
+  try {
+    const response = await fetch("/api/ai-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ollama_url: ollamaUrl, ollama_model: ollamaModel })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to save AI settings.");
+    }
+    dom.ollamaUrl.value = data.ollama_url || ollamaUrl;
+    dom.ollamaModel.value = data.ollama_model || ollamaModel;
+    dom.aiConfigStatus.textContent = "AI settings saved.";
+    dom.aiConfigStatus.className = "text-success small";
+  } catch (err) {
+    dom.aiConfigStatus.textContent = err.message || "Failed to save AI settings.";
+    dom.aiConfigStatus.className = "text-danger small";
   }
 }
 

@@ -4,6 +4,7 @@ import json
 import os
 import io
 from uuid import uuid4
+import requests
 
 app = Flask(__name__)
 
@@ -15,6 +16,39 @@ ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
 DATA_FILE = os.path.join(DATA_FOLDER, "data.json")
 RESULT_CACHE = {}
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
+OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "30"))
+AI_CONFIG_FILE = os.path.join(DATA_FOLDER, "ai_config.json")
+
+
+def load_ai_config():
+    default_config = {
+        "ollama_url": OLLAMA_URL,
+        "ollama_model": OLLAMA_MODEL
+    }
+    if os.path.exists(AI_CONFIG_FILE):
+        try:
+            with open(AI_CONFIG_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return {
+                    "ollama_url": str(data.get("ollama_url", default_config["ollama_url"])).strip() or default_config["ollama_url"],
+                    "ollama_model": str(data.get("ollama_model", default_config["ollama_model"])).strip() or default_config["ollama_model"]
+                }
+        except (json.JSONDecodeError, OSError):
+            pass
+    return default_config
+
+
+def save_ai_config(cfg):
+    payload = {
+        "ollama_url": str(cfg.get("ollama_url", "")).strip(),
+        "ollama_model": str(cfg.get("ollama_model", "")).strip()
+    }
+    with open(AI_CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=4, ensure_ascii=False)
+    return payload
 
 
 def load_data():
@@ -126,8 +160,11 @@ def parse_test_form(form, files):
     }
 
 
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 def index():
+    if request.method == "POST":
+        # Some clients post to "/" (e.g., form without action). Return 204 to avoid extra GET noise.
+        return ("", 204)
     return render_template("index.html")
 
 @app.route("/new", methods=["GET", "POST"])
@@ -230,6 +267,200 @@ def api_get_test(test_id):
     test = data["tests"][test_id]
     # include id for reference on the client
     return jsonify({"id": test_id, **test})
+
+@app.route("/api/ai-config", methods=["GET", "POST"])
+def api_ai_config():
+    if request.method == "GET":
+        cfg = load_ai_config()
+        return jsonify(cfg)
+
+    payload = request.get_json(silent=True) or {}
+    ollama_url = str(payload.get("ollama_url", "")).strip()
+    ollama_model = str(payload.get("ollama_model", "")).strip()
+
+    if not ollama_url:
+        return jsonify({"error": "Ollama URL is required."}), 400
+    if not ollama_model:
+        return jsonify({"error": "Model name is required."}), 400
+
+    saved = save_ai_config({
+        "ollama_url": ollama_url.rstrip("/"),
+        "ollama_model": ollama_model
+    })
+    return jsonify(saved)
+
+@app.route("/api/ai-summary", methods=["POST"])
+def api_ai_summary():
+    payload = request.get_json(silent=True) or {}
+    question = str(payload.get("question", "")).strip()
+    options = payload.get("options", [])
+    correct_index = payload.get("correct_index")
+    selected_index = payload.get("selected_index")
+    explanation = str(payload.get("explanation", "")).strip()
+    include_raw = bool(payload.get("include_raw", False))
+
+    if not question or not isinstance(options, list) or not options:
+        return jsonify({"error": "Invalid question payload."}), 400
+
+    if not isinstance(correct_index, int) or not (0 <= correct_index < len(options)):
+        return jsonify({"error": "Invalid correct index."}), 400
+
+    correct_answer = options[correct_index]
+    selected_answer = ""
+    if isinstance(selected_index, int) and 0 <= selected_index < len(options):
+        selected_answer = options[selected_index]
+
+    option_lines = "\n".join([f"{idx + 1}. {opt}" for idx, opt in enumerate(options)])
+    cfg = load_ai_config()
+    ollama_url = str(cfg.get("ollama_url", OLLAMA_URL)).strip().rstrip("/")
+    ollama_model = str(cfg.get("ollama_model", OLLAMA_MODEL)).strip()
+
+    system_prompt = (
+        "You are a precise tutor. Write a brief explanation (2-4 sentences) that connects the question to the correct answer. "
+        "Use at least one specific clue or phrase from the question or options. "
+        "If the student chose incorrectly, add one short contrast about why the correct answer fits better. "
+        "Do not mention being an AI, do not use markdown, and do not say 'it's correct because it is correct'."
+    )
+    user_prompt = (
+        f"Question:\n{question}\n\nOptions:\n{option_lines}\n\n"
+        f"Correct answer:\n{correct_answer}\n\n"
+        f"Student selected:\n{selected_answer or 'No selection'}\n\n"
+        f"Provided explanation:\n{explanation or 'None'}"
+    )
+
+    try:
+        response = requests.post(
+            f"{ollama_url}/api/chat",
+            json={
+                "model": ollama_model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "stream": False,
+                "options": {
+                    "temperature": 0.2,
+                    "num_predict": 180,
+                    "top_p": 0.9,
+                    "repeat_penalty": 1.1
+                }
+            },
+            timeout=OLLAMA_TIMEOUT
+        )
+    except requests.RequestException:
+        return jsonify({"error": "AI server is unavailable."}), 502
+
+    if response.status_code != 200:
+        return jsonify({"error": "AI server error."}), 502
+
+    try:
+        data = response.json() if response.content else {}
+    except ValueError:
+        preview = response.text[:200] if response.text else "Empty response"
+        return jsonify({"error": f"AI server returned non-JSON response: {preview}"}), 502
+
+    if isinstance(data, dict) and data.get("error"):
+        return jsonify({"error": str(data.get('error'))}), 502
+
+    summary = ""
+    thinking = ""
+    if isinstance(data, dict):
+        msg = data.get("message")
+        if isinstance(msg, dict):
+            summary = str(msg.get("content", "")).strip()
+        if not summary:
+            choices = data.get("choices")
+            if isinstance(choices, list) and choices:
+                first = choices[0]
+                if isinstance(first, dict):
+                    msg = first.get("message")
+                    if isinstance(msg, dict):
+                        summary = str(msg.get("content", "")).strip()
+                    if not summary:
+                        summary = str(first.get("text", "")).strip()
+        if not summary:
+            summary = str(data.get("response", "")).strip()
+        thinking = str(data.get("thinking", "")).strip()
+
+    if not summary and isinstance(data, dict):
+        message = data.get("message")
+        if isinstance(message, dict):
+            summary = str(message.get("content", "")).strip()
+
+    if not summary and isinstance(data, dict):
+        choices = data.get("choices")
+        if isinstance(choices, list) and choices:
+            first = choices[0]
+            if isinstance(first, dict):
+                msg = first.get("message")
+                if isinstance(msg, dict):
+                    summary = str(msg.get("content", "")).strip()
+                if not summary:
+                    summary = str(first.get("text", "")).strip()
+
+    if not summary:
+        try:
+            fallback = requests.post(
+                f"{ollama_url}/api/generate",
+                json={
+                    "model": ollama_model,
+                    "prompt": user_prompt,
+                    "system": system_prompt,
+                    "stream": False,
+                    "options": {
+                        "temperature": 0.2,
+                        "num_predict": 180,
+                        "top_p": 0.9,
+                        "repeat_penalty": 1.1
+                    }
+                },
+                timeout=OLLAMA_TIMEOUT
+            )
+        except requests.RequestException:
+            return jsonify({"error": "AI server is unavailable."}), 502
+
+        if fallback.status_code != 200:
+            return jsonify({"error": "AI server error."}), 502
+
+        try:
+            fb_data = fallback.json() if fallback.content else {}
+        except ValueError:
+            preview = fallback.text[:200] if fallback.text else "Empty response"
+            return jsonify({"error": f"AI server returned non-JSON response: {preview}"}), 502
+
+        if isinstance(fb_data, dict):
+            summary = str(fb_data.get("response", "")).strip()
+            if not summary:
+                msg = fb_data.get("message")
+                if isinstance(msg, dict):
+                    summary = str(msg.get("content", "")).strip()
+            if not thinking:
+                thinking = str(fb_data.get("thinking", "")).strip()
+
+    if not summary and thinking:
+        return jsonify({
+            "error": "Model returned only 'thinking' without a usable answer.",
+            "debug": {
+                "provider": "ollama",
+                "model": ollama_model,
+                "endpoint": f"{ollama_url}/api/chat",
+                "hint": "This model may be configured to output chain-of-thought only. Try a model that returns a 'response' or 'message.content'."
+            }
+        }), 502
+
+    if not summary:
+        keys = ", ".join(sorted([str(k) for k in data.keys()])) if isinstance(data, dict) else "unknown"
+        return jsonify({
+            "error": f"No summary returned. Response keys: {keys}",
+            "debug": {
+                "provider": "ollama",
+                "model": ollama_model,
+                "endpoint": f"{ollama_url}/api/chat",
+                "hint": "Expected 'message.content' (chat) or 'response' (generate)."
+            }
+        }), 502
+
+    return jsonify({"summary": summary})
 
 @app.route("/delete/<int:test_id>")
 def delete_test(test_id):

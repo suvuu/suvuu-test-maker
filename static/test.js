@@ -39,6 +39,8 @@ function cacheDom() {
   dom.questionContainer = document.getElementById("question-container");
   dom.questionContent = dom.questionContainer ? dom.questionContainer.querySelector(".question-content") : null;
   dom.resultMsg = document.getElementById("result-msg");
+  dom.aiToggle = document.getElementById("ai-summary-toggle");
+  dom.aiSummary = document.getElementById("ai-summary");
   dom.form = document.getElementById("test-form");
   dom.checkBtn = document.getElementById("check-btn");
   dom.prevBtn = document.getElementById("prev-btn");
@@ -316,6 +318,10 @@ function updateProgress() {
 function clearResult() {
   dom.resultMsg.innerHTML = "";
   dom.resultMsg.className = "mt-2";
+  if (dom.aiSummary) {
+    dom.aiSummary.innerHTML = "";
+    dom.aiSummary.className = "mt-2";
+  }
 }
 
 function showResult(isCorrect, explanation) {
@@ -348,6 +354,51 @@ function handleCheck() {
   const correctIndex = QUESTIONS[currentQuestionIndex].correct_index;
   const explanation = QUESTIONS[currentQuestionIndex].explanation || "";
   showResult(selected === correctIndex, explanation);
+
+  if (dom.aiToggle && dom.aiToggle.checked) {
+    requestAiSummary(QUESTIONS[currentQuestionIndex], selected);
+  }
+}
+
+async function requestAiSummary(question, selectedIndex) {
+  if (!dom.aiSummary) return;
+
+  dom.aiSummary.className = "mt-2 text-info";
+  dom.aiSummary.textContent = "Generating AI summary...";
+
+  const payload = {
+    question: question.question,
+    options: question.options,
+    correct_index: question.correct_index,
+    selected_index: selectedIndex,
+    explanation: question.explanation || ""
+  };
+
+  try {
+    const response = await fetch("/api/ai-summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || "Unable to generate summary.");
+    }
+
+    const data = await response.json();
+    const summary = data.summary || "";
+    if (summary) {
+      dom.aiSummary.className = "mt-2 text-light";
+      dom.aiSummary.innerHTML = `<strong>AI Summary:</strong> ${summary}`;
+    } else {
+      dom.aiSummary.className = "mt-2 text-warning";
+      dom.aiSummary.textContent = "No summary returned.";
+    }
+  } catch (err) {
+    dom.aiSummary.className = "mt-2 text-warning";
+    dom.aiSummary.textContent = err.message || "Unable to generate AI summary.";
+  }
 }
 
 function handlePrev() {

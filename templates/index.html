@@ -98,6 +98,27 @@
         <div id="import-status" class="text-light ms-md-3 text-center text-md-start w-100 w-md-auto"></div>
       </div>
 
+      <div class="mb-4 p-3 border border-light border-opacity-10 rounded-3">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+          <strong>AI Summary Settings</strong>
+          <span class="text-muted small">(used for "Check Answer" summaries)</span>
+        </div>
+        <div class="row g-2">
+          <div class="col-md-7">
+            <label for="ollama-url" class="form-label small text-muted mb-1">Ollama URL</label>
+            <input id="ollama-url" type="text" class="form-control" placeholder="http://localhost:11434">
+          </div>
+          <div class="col-md-5">
+            <label for="ollama-model" class="form-label small text-muted mb-1">Model</label>
+            <input id="ollama-model" type="text" class="form-control" placeholder="llama3">
+          </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 align-items-center mt-2">
+          <button id="save-ai-config" type="button" class="btn btn-outline-light">Save AI Settings</button>
+          <div id="ai-config-status" class="text-muted small"></div>
+        </div>
+      </div>
+
       <p id="tests-empty" class="text-muted d-none">Loading tests...</p>
       <div id="tests-skeleton" class="mt-3">
         <div class="skeleton skeleton-row"></div>
