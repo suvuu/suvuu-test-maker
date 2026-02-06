@@ -108,6 +108,41 @@ def get_attempt_by_token(token):
             return attempt
     return None
 
+def delete_attempt_by_token(token):
+    attempts_data = load_attempts()
+    attempts = attempts_data.get("attempts", [])
+    if not isinstance(attempts, list):
+        attempts = []
+
+    token_str = str(token).strip()
+    kept = []
+    removed = 0
+    for attempt in attempts:
+        if not isinstance(attempt, dict):
+            continue
+        if str(attempt.get("id", "")).strip() == token_str:
+            removed += 1
+            continue
+        kept.append(attempt)
+
+    if removed > 0:
+        attempts_data["attempts"] = kept
+        save_attempts(attempts_data)
+
+    RESULT_CACHE.pop(token_str, None)
+    return removed
+
+def clear_attempts():
+    attempts_data = load_attempts()
+    attempts = attempts_data.get("attempts", [])
+    if not isinstance(attempts, list):
+        attempts = []
+    removed = len(attempts)
+    attempts_data["attempts"] = []
+    save_attempts(attempts_data)
+    RESULT_CACHE.clear()
+    return removed
+
 def is_allowed_image(filename):
     _, ext = os.path.splitext(filename)
     return ext.lower() in ALLOWED_IMAGE_EXTENSIONS
@@ -741,7 +776,6 @@ def api_ai_summary():
     correct_index = payload.get("correct_index")
     selected_index = payload.get("selected_index")
     explanation = str(payload.get("explanation", "")).strip()
-    include_raw = bool(payload.get("include_raw", False))
 
     if not question or not isinstance(options, list) or not options:
         return jsonify({"error": "Invalid question payload."}), 400
@@ -1232,6 +1266,21 @@ def api_attempts():
             break
 
     return jsonify({"attempts": items, "total": len(items)})
+
+@app.route("/api/attempts/<token>", methods=["DELETE"])
+def api_delete_attempt(token):
+    token_str = str(token).strip()
+    if not token_str:
+        return jsonify({"error": "Attempt id is required."}), 400
+    removed = delete_attempt_by_token(token_str)
+    if removed <= 0:
+        return jsonify({"error": "Attempt not found."}), 404
+    return jsonify({"success": True, "deleted": removed})
+
+@app.route("/api/attempts", methods=["DELETE"])
+def api_clear_attempts():
+    removed = clear_attempts()
+    return jsonify({"success": True, "deleted": removed})
 
 
 @app.route("/api/results/<token>")

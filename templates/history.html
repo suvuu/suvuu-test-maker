@@ -40,10 +40,14 @@
     <div class="history-panel">
       <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <h2 class="mb-0">Past Results</h2>
-        <a href="/" class="btn btn-outline-light">Back to Home</a>
+        <div class="d-flex gap-2">
+          <button id="clear-history-btn" type="button" class="btn btn-outline-danger">Clear All Results</button>
+          <a href="/" class="btn btn-outline-light">Back to Home</a>
+        </div>
       </div>
 
       <div id="history-error" class="alert alert-danger d-none"></div>
+      <div id="history-status" class="alert alert-success d-none"></div>
       <div id="history-empty" class="text-muted d-none">No attempts yet. Take a test to start building history.</div>
       <div id="history-list"></div>
     </div>
