@@ -10,6 +10,9 @@ let panY = 0;
 let isPanning = false;
 let panStartX = 0;
 let panStartY = 0;
+let lastAiSummary = "";
+let lastAiQuestionOrigIdx = null;
+let lastAiQuestionShuffledIdx = null;
 
 const dom = {};
 
@@ -40,6 +43,8 @@ function cacheDom() {
   dom.questionContent = dom.questionContainer ? dom.questionContainer.querySelector(".question-content") : null;
   dom.resultMsg = document.getElementById("result-msg");
   dom.aiToggle = document.getElementById("ai-summary-toggle");
+  dom.aiSummaryBtn = document.getElementById("ai-summary-btn");
+  dom.appendAiBtn = document.getElementById("append-ai-btn");
   dom.aiSummary = document.getElementById("ai-summary");
   dom.form = document.getElementById("test-form");
   dom.checkBtn = document.getElementById("check-btn");
@@ -55,6 +60,12 @@ function cacheDom() {
 
 function attachEventListeners() {
   dom.checkBtn.addEventListener("click", handleCheck);
+  if (dom.aiSummaryBtn) {
+    dom.aiSummaryBtn.addEventListener("click", handleManualAiSummary);
+  }
+  if (dom.appendAiBtn) {
+    dom.appendAiBtn.addEventListener("click", handleAppendAiSummary);
+  }
   dom.prevBtn.addEventListener("click", handlePrev);
   dom.nextBtn.addEventListener("click", handleNext);
   dom.form.addEventListener("submit", handleFormSubmit);
@@ -316,21 +327,37 @@ function updateProgress() {
 }
 
 function clearResult() {
-  dom.resultMsg.innerHTML = "";
+  dom.resultMsg.textContent = "";
   dom.resultMsg.className = "mt-2";
   if (dom.aiSummary) {
-    dom.aiSummary.innerHTML = "";
+    dom.aiSummary.textContent = "";
     dom.aiSummary.className = "mt-2";
+  }
+  lastAiSummary = "";
+  lastAiQuestionOrigIdx = null;
+  lastAiQuestionShuffledIdx = null;
+  if (dom.appendAiBtn) {
+    dom.appendAiBtn.classList.add("d-none");
+    dom.appendAiBtn.disabled = false;
+    dom.appendAiBtn.textContent = "Append AI Summary To Explanation";
   }
 }
 
 function showResult(isCorrect, explanation) {
   dom.resultMsg.classList.remove("text-success", "text-danger");
-  const details = explanation ? `<br><em>Explanation:</em> ${explanation}` : "";
-  if (isCorrect) {
-    dom.resultMsg.innerHTML = `<span class="text-success">✅ Correct!</span>${details}`;
-  } else {
-    dom.resultMsg.innerHTML = `<span class="text-danger">❌ Incorrect.</span>${details}`;
+  dom.resultMsg.textContent = "";
+
+  const status = document.createElement("span");
+  status.className = isCorrect ? "text-success" : "text-danger";
+  status.textContent = isCorrect ? "Correct!" : "Incorrect.";
+  dom.resultMsg.appendChild(status);
+
+  if (explanation) {
+    dom.resultMsg.appendChild(document.createElement("br"));
+    const label = document.createElement("em");
+    label.textContent = "Explanation:";
+    dom.resultMsg.appendChild(label);
+    dom.resultMsg.appendChild(document.createTextNode(` ${explanation}`));
   }
 }
 
@@ -375,29 +402,114 @@ async function requestAiSummary(question, selectedIndex) {
   };
 
   try {
-    const response = await fetch("/api/ai-summary", {
+    const response = await fetch("/api/ai-summary-stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
 
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.error || "Unable to generate summary.");
+    if (!response.ok || !response.body) {
+      throw new Error("Streaming unavailable.");
     }
 
-    const data = await response.json();
-    const summary = data.summary || "";
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let summary = "";
+    dom.aiSummary.className = "mt-2 text-light";
+    dom.aiSummary.textContent = "AI Summary: ";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      if (!chunk) continue;
+      summary += chunk;
+      dom.aiSummary.textContent = `AI Summary: ${summary}`;
+    }
+    summary = summary.trim();
+
     if (summary) {
-      dom.aiSummary.className = "mt-2 text-light";
-      dom.aiSummary.innerHTML = `<strong>AI Summary:</strong> ${summary}`;
+      lastAiSummary = summary;
+      lastAiQuestionOrigIdx = indexMap[currentQuestionIndex];
+      lastAiQuestionShuffledIdx = currentQuestionIndex;
+      if (dom.appendAiBtn) {
+        dom.appendAiBtn.classList.remove("d-none");
+      }
     } else {
       dom.aiSummary.className = "mt-2 text-warning";
       dom.aiSummary.textContent = "No summary returned.";
     }
   } catch (err) {
+    try {
+      const fallback = await fetch("/api/ai-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!fallback.ok) {
+        const e = await fallback.json().catch(() => ({}));
+        throw new Error(e.error || "Unable to generate summary.");
+      }
+      const data = await fallback.json();
+      const summary = String(data.summary || "").trim();
+      if (!summary) {
+        throw new Error("No summary returned.");
+      }
+      lastAiSummary = summary;
+      lastAiQuestionOrigIdx = indexMap[currentQuestionIndex];
+      lastAiQuestionShuffledIdx = currentQuestionIndex;
+      if (dom.appendAiBtn) {
+        dom.appendAiBtn.classList.remove("d-none");
+      }
+      dom.aiSummary.className = "mt-2 text-light";
+      dom.aiSummary.textContent = `AI Summary: ${summary}`;
+    } catch (fallbackErr) {
+      dom.aiSummary.className = "mt-2 text-warning";
+      dom.aiSummary.textContent = fallbackErr.message || err.message || "Unable to generate AI summary.";
+    }
+  }
+}
+
+function handleManualAiSummary() {
+  if (!QUESTIONS.length) return;
+  const selected = getSelectedAnswer();
+  requestAiSummary(QUESTIONS[currentQuestionIndex], selected);
+}
+
+async function handleAppendAiSummary() {
+  if (!TEST_DATA || typeof TEST_DATA.id !== "number") return;
+  if (!lastAiSummary || lastAiQuestionOrigIdx === null || lastAiQuestionOrigIdx === undefined) return;
+  if (!dom.appendAiBtn || !dom.aiSummary) return;
+
+  dom.appendAiBtn.disabled = true;
+  dom.appendAiBtn.textContent = "Appending...";
+
+  try {
+    const response = await fetch(`/api/tests/${TEST_DATA.id}/questions/${lastAiQuestionOrigIdx}/append-explanation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ summary: lastAiSummary })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error || "Failed to append explanation.");
+    }
+
+    const updatedExplanation = String(payload.explanation || "");
+    if (
+      lastAiQuestionShuffledIdx !== null &&
+      lastAiQuestionShuffledIdx >= 0 &&
+      lastAiQuestionShuffledIdx < QUESTIONS.length
+    ) {
+      QUESTIONS[lastAiQuestionShuffledIdx].explanation = updatedExplanation;
+    }
+    dom.aiSummary.className = "mt-2 text-success";
+    dom.aiSummary.textContent = "AI summary appended to this question's explanation.";
+    dom.appendAiBtn.textContent = "Appended";
+  } catch (err) {
+    dom.appendAiBtn.disabled = false;
+    dom.appendAiBtn.textContent = "Append AI Summary To Explanation";
     dom.aiSummary.className = "mt-2 text-warning";
-    dom.aiSummary.textContent = err.message || "Unable to generate AI summary.";
+    dom.aiSummary.textContent = err.message || "Unable to append AI summary.";
   }
 }
 
@@ -471,7 +583,11 @@ function setControlsDisabled(disabled) {
 function showFatalError(message) {
   setControlsDisabled(true);
   dom.testTitle.textContent = "Error";
-  dom.questionContainer.innerHTML = `<div class="alert alert-danger">${message}</div>`;
+  dom.questionContainer.textContent = "";
+  const alert = document.createElement("div");
+  alert.className = "alert alert-danger";
+  alert.textContent = message;
+  dom.questionContainer.appendChild(alert);
   dom.progress.textContent = "";
 }
 

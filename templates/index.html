@@ -88,11 +88,12 @@
 
       <div class="mb-4 d-flex flex-wrap gap-2 align-items-center justify-content-center justify-content-md-start">
         <a href="/new" class="btn btn-success">New Test</a>
-        <a href="/export" class="btn btn-info">Export All Tests (data.json)</a>
+        <a href="/history" class="btn btn-outline-light">Past Results</a>
+        <a href="/export" class="btn btn-info">Export Tests + Pictures (.zip)</a>
 
         <button type="button" class="btn btn-secondary" id="import-btn">Import Tests</button>
         <form id="import-form" method="post" enctype="multipart/form-data" action="/import" style="display: none;">
-          <input type="file" name="file" accept=".json" id="import-file-input">
+          <input type="file" name="file" accept=".json,.zip" id="import-file-input">
         </form>
 
         <div id="import-status" class="text-light ms-md-3 text-center text-md-start w-100 w-md-auto"></div>
@@ -101,25 +102,82 @@
       <div class="mb-4 p-3 border border-light border-opacity-10 rounded-3">
         <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
           <strong>AI Summary Settings</strong>
-          <span class="text-muted small">(used for "Check Answer" summaries)</span>
+          <span class="text-light small">(used for "Check Answer" summaries)</span>
         </div>
         <div class="row g-2">
           <div class="col-md-7">
-            <label for="ollama-url" class="form-label small text-muted mb-1">Ollama URL</label>
+            <label for="ollama-url" class="form-label small text-light mb-1">Ollama URL</label>
             <input id="ollama-url" type="text" class="form-control" placeholder="http://localhost:11434">
           </div>
           <div class="col-md-5">
-            <label for="ollama-model" class="form-label small text-muted mb-1">Model</label>
+            <label for="ollama-model" class="form-label small text-light mb-1">Model</label>
             <input id="ollama-model" type="text" class="form-control" placeholder="llama3">
           </div>
         </div>
         <div class="d-flex flex-wrap gap-2 align-items-center mt-2">
           <button id="save-ai-config" type="button" class="btn btn-outline-light">Save AI Settings</button>
-          <div id="ai-config-status" class="text-muted small"></div>
+          <div id="ai-config-status" class="text-light small"></div>
         </div>
       </div>
 
-      <p id="tests-empty" class="text-muted d-none">Loading tests...</p>
+      <div class="mb-4 p-3 border border-light border-opacity-10 rounded-3">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+          <strong>AI Image To Question</strong>
+          <span class="text-light small">(requires a vision model in Ollama)</span>
+        </div>
+        <div class="row g-2">
+          <div class="col-md-5">
+            <label for="ai-import-test" class="form-label small text-light mb-1">Target Test</label>
+            <select id="ai-import-test" class="form-select"></select>
+          </div>
+          <div class="col-md-5">
+            <label for="ai-import-image" class="form-label small text-light mb-1">Image</label>
+            <input id="ai-import-image" type="file" class="form-control" accept="image/*" multiple>
+          </div>
+          <div class="col-md-2 d-grid">
+            <label class="form-label small text-light mb-1">&nbsp;</label>
+            <button id="ai-import-btn" type="button" class="btn btn-outline-info">Add With AI</button>
+          </div>
+        </div>
+        <div class="row g-2 mt-1">
+          <div class="col-md-12 d-grid">
+            <button id="ai-import-batch-btn" type="button" class="btn btn-outline-primary">Batch Add All Selected Images</button>
+          </div>
+        </div>
+        <div class="form-check mt-2">
+          <input class="form-check-input" type="checkbox" id="ai-import-attach-image">
+          <label class="form-check-label small text-light" for="ai-import-attach-image">
+            Attach source image to generated question
+          </label>
+        </div>
+        <div id="ai-import-status" class="text-light small mt-2"></div>
+
+        <div id="ai-import-preview" class="mt-3 p-3 border border-light border-opacity-10 rounded-3 d-none">
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <strong>Review AI Draft</strong>
+            <span class="text-light small">Edit before save</span>
+          </div>
+          <div class="mb-2">
+            <label for="ai-preview-question" class="form-label small text-light mb-1">Question</label>
+            <textarea id="ai-preview-question" class="form-control" rows="3"></textarea>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small text-light mb-1">Options</label>
+            <div id="ai-preview-options"></div>
+            <button type="button" id="ai-preview-add-option" class="btn btn-sm btn-outline-primary mt-2">Add Option</button>
+          </div>
+          <div class="mb-2">
+            <label for="ai-preview-explanation" class="form-label small text-light mb-1">Explanation</label>
+            <textarea id="ai-preview-explanation" class="form-control" rows="2"></textarea>
+          </div>
+          <div class="d-flex flex-wrap gap-2 mt-3">
+            <button type="button" id="ai-preview-save" class="btn btn-success">Save To Test</button>
+            <button type="button" id="ai-preview-cancel" class="btn btn-secondary">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <p id="tests-empty" class="text-light d-none">Loading tests...</p>
       <div id="tests-skeleton" class="mt-3">
         <div class="skeleton skeleton-row"></div>
         <div class="skeleton skeleton-row" style="width: 90%;"></div>

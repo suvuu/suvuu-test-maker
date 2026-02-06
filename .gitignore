@@ -1,6 +1,10 @@
 # data
 data/data.json
+data/attempts.json
+data/ai_config.json
 data/uploads/
+data/*.zip
+*.zip
 
 # venv
 venv/

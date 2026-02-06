@@ -219,7 +219,7 @@
 
   <script>
     let removeTarget = null;
-    const modal = new bootstrap.Modal('#removeModal');
+    const modal = new bootstrap.Modal(document.getElementById('removeModal'));
 
     function reindexAll() {
       const blocks = Array.from(document.querySelectorAll('.question-block'));
@@ -274,7 +274,7 @@
       requestAnimationFrame(() => {
         blocks.forEach((block, bIdx) => {
           const radios = block.querySelectorAll('.correct-radio');
-          const savedIdx = savedCorrectPerBlock[bIdx] ?? 0;
+          const savedIdx = savedCorrectPerBlock[bIdx] || 0;
           if (radios[savedIdx]) {
             radios[savedIdx].checked = true;
           } else if (radios.length > 0) {

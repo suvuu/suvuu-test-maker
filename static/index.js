@@ -1,9 +1,12 @@
 const dom = {};
+let cachedTests = [];
+let aiDraft = null;
 
 document.addEventListener("DOMContentLoaded", () => {
   cacheDom();
   attachImportHandlers();
   attachAiConfigHandlers();
+  attachAiImageImportHandlers();
   initDeleteModal();
   loadTests();
   loadAiConfig();
@@ -16,6 +19,7 @@ function cacheDom() {
   dom.importBtn = document.getElementById("import-btn");
   dom.importFileInput = document.getElementById("import-file-input");
   dom.importStatus = document.getElementById("import-status");
+  dom.importStatusBase = dom.importStatus ? dom.importStatus.className : "";
   dom.ollamaUrl = document.getElementById("ollama-url");
   dom.ollamaModel = document.getElementById("ollama-model");
   dom.saveAiConfig = document.getElementById("save-ai-config");
@@ -23,6 +27,19 @@ function cacheDom() {
   dom.deleteModal = document.getElementById("deleteModal");
   dom.deleteTitle = document.getElementById("testTitlePreview");
   dom.deleteConfirm = document.getElementById("confirmDeleteBtn");
+  dom.aiImportTest = document.getElementById("ai-import-test");
+  dom.aiImportImage = document.getElementById("ai-import-image");
+  dom.aiImportBtn = document.getElementById("ai-import-btn");
+  dom.aiImportBatchBtn = document.getElementById("ai-import-batch-btn");
+  dom.aiImportAttachImage = document.getElementById("ai-import-attach-image");
+  dom.aiImportStatus = document.getElementById("ai-import-status");
+  dom.aiPreviewBox = document.getElementById("ai-import-preview");
+  dom.aiPreviewQuestion = document.getElementById("ai-preview-question");
+  dom.aiPreviewOptions = document.getElementById("ai-preview-options");
+  dom.aiPreviewExplanation = document.getElementById("ai-preview-explanation");
+  dom.aiPreviewAddOption = document.getElementById("ai-preview-add-option");
+  dom.aiPreviewSave = document.getElementById("ai-preview-save");
+  dom.aiPreviewCancel = document.getElementById("ai-preview-cancel");
 }
 
 function attachImportHandlers() {
@@ -33,8 +50,9 @@ function attachImportHandlers() {
   dom.importFileInput.addEventListener("change", event => {
     const file = event.target.files[0];
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith(".json")) {
-      alert("Please select a .json file");
+    const lower = file.name.toLowerCase();
+    if (!(lower.endsWith(".json") || lower.endsWith(".zip"))) {
+      alert("Please select a .json or .zip backup file");
       event.target.value = "";
       return;
     }
@@ -46,6 +64,23 @@ function attachImportHandlers() {
 function attachAiConfigHandlers() {
   if (!dom.saveAiConfig) return;
   dom.saveAiConfig.addEventListener("click", saveAiConfig);
+}
+
+function attachAiImageImportHandlers() {
+  if (!dom.aiImportBtn) return;
+  dom.aiImportBtn.addEventListener("click", runAiImageImport);
+  if (dom.aiImportBatchBtn) {
+    dom.aiImportBatchBtn.addEventListener("click", runAiImageBatchImport);
+  }
+  if (dom.aiPreviewAddOption) {
+    dom.aiPreviewAddOption.addEventListener("click", () => addAiPreviewOption(""));
+  }
+  if (dom.aiPreviewSave) {
+    dom.aiPreviewSave.addEventListener("click", commitAiDraft);
+  }
+  if (dom.aiPreviewCancel) {
+    dom.aiPreviewCancel.addEventListener("click", clearAiDraft);
+  }
 }
 
 function initDeleteModal() {
@@ -121,6 +156,8 @@ async function saveAiConfig() {
 }
 
 function renderTests(tests) {
+  cachedTests = tests;
+  renderAiImportTargets(tests);
   setSkeletonVisible(false);
   if (!tests.length) {
     dom.testsList.classList.add("d-none");
@@ -160,11 +197,40 @@ function renderTests(tests) {
   dom.testsList.appendChild(fragment);
 }
 
+function renderAiImportTargets(tests) {
+  if (!dom.aiImportTest) return;
+  dom.aiImportTest.innerHTML = "";
+  if (!tests.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No tests available";
+    dom.aiImportTest.appendChild(option);
+    dom.aiImportTest.disabled = true;
+    return;
+  }
+  dom.aiImportTest.disabled = false;
+  tests.forEach((test) => {
+    const option = document.createElement("option");
+    option.value = String(test.id);
+    option.textContent = `${test.title || "Untitled Test"} (${test.question_count || 0} q)`;
+    dom.aiImportTest.appendChild(option);
+  });
+}
+
 function showTestsMessage(message, isError = false) {
   if (!dom.testsEmpty) return;
   dom.testsEmpty.textContent = message;
   dom.testsEmpty.classList.remove("d-none", "text-danger");
   dom.testsEmpty.classList.add(isError ? "text-danger" : "text-muted");
+}
+
+function setImportStatus(message, extraClass) {
+  if (!dom.importStatus) return;
+  dom.importStatus.textContent = message;
+  dom.importStatus.className = dom.importStatusBase;
+  if (extraClass) {
+    dom.importStatus.classList.add(extraClass);
+  }
 }
 
 function createTestListItem(test) {
@@ -190,6 +256,11 @@ function createTestListItem(test) {
   takeLink.className = "btn btn-sm btn-primary flex-grow-1 flex-md-grow-0 test-take";
   takeLink.textContent = "Take";
 
+  const flashcardsLink = document.createElement("a");
+  flashcardsLink.href = `/flashcards/${test.id}`;
+  flashcardsLink.className = "btn btn-sm btn-info flex-grow-1 flex-md-grow-0 test-flashcards";
+  flashcardsLink.textContent = "Flashcards";
+
   const editLink = document.createElement("a");
   editLink.href = `/edit/${test.id}`;
   editLink.className = "btn btn-sm btn-warning flex-grow-1 flex-md-grow-0 test-edit";
@@ -202,6 +273,7 @@ function createTestListItem(test) {
   deleteBtn.addEventListener("click", () => showDeleteModal(test));
 
   actions.appendChild(takeLink);
+  actions.appendChild(flashcardsLink);
   actions.appendChild(editLink);
   actions.appendChild(deleteBtn);
 
@@ -227,6 +299,10 @@ function updateTestListItem(li, test) {
   const editLink = li.querySelector(".test-edit");
   if (editLink) {
     editLink.href = `/edit/${test.id}`;
+  }
+  const flashcardsLink = li.querySelector(".test-flashcards");
+  if (flashcardsLink) {
+    flashcardsLink.href = `/flashcards/${test.id}`;
   }
   const deleteBtn = li.querySelector(".test-delete");
   if (deleteBtn) {
@@ -254,7 +330,7 @@ function showDeleteModal(test) {
 
 async function uploadImportFile(file) {
   if (!dom.importStatus) return;
-  dom.importStatus.innerHTML = '<span class="text-info">Uploading...</span>';
+  setImportStatus("Uploading...", "text-info");
 
   const formData = new FormData();
   formData.append("file", file);
@@ -266,13 +342,282 @@ async function uploadImportFile(file) {
     });
     const data = await response.json();
     if (data.success) {
-      dom.importStatus.innerHTML = `<span class="text-success">Success: ${data.message}</span>`;
+      setImportStatus(`Success: ${data.message}`, "text-success");
       loadTests();
     } else {
-      dom.importStatus.innerHTML = `<span class="text-danger">Failed: ${data.error || "Upload failed"}</span>`;
+      setImportStatus(`Failed: ${data.error || "Upload failed"}`, "text-danger");
     }
   } catch (err) {
     console.error("Import failed:", err);
-    dom.importStatus.innerHTML = '<span class="text-danger">Failed: Upload failed</span>';
+    setImportStatus("Failed: Upload failed", "text-danger");
+  }
+}
+
+async function runAiImageImport() {
+  if (!dom.aiImportBtn || !dom.aiImportTest || !dom.aiImportImage || !dom.aiImportStatus) return;
+  const selectedTest = dom.aiImportTest.value;
+  const imageFile = dom.aiImportImage.files && dom.aiImportImage.files[0];
+
+  if (!selectedTest) {
+    dom.aiImportStatus.className = "text-warning small mt-2";
+    dom.aiImportStatus.textContent = "Select a test first.";
+    return;
+  }
+  if (!imageFile) {
+    dom.aiImportStatus.className = "text-warning small mt-2";
+    dom.aiImportStatus.textContent = "Select an image first.";
+    return;
+  }
+
+  dom.aiImportBtn.disabled = true;
+  dom.aiImportStatus.className = "text-info small mt-2";
+  dom.aiImportStatus.textContent = "Running AI pass 1 + pass 2, then preparing review draft...";
+
+  const formData = new FormData();
+  formData.append("image", imageFile);
+  formData.append("attach_source_image", dom.aiImportAttachImage && dom.aiImportAttachImage.checked ? "on" : "off");
+
+  try {
+    const response = await fetch(`/api/tests/${encodeURIComponent(selectedTest)}/ai-import-question`, {
+      method: "POST",
+      body: formData
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to import question from image.");
+    }
+
+    aiDraft = {
+      testId: Number(selectedTest),
+      question: data.question?.question || "",
+      options: Array.isArray(data.question?.options) ? data.question.options : [],
+      correct_index: Number(data.question?.correct_index ?? 0),
+      explanation: data.question?.explanation || "",
+      image: data.question?.image || ""
+    };
+    populateAiDraftEditor();
+    dom.aiImportStatus.className = "text-success small mt-2";
+    dom.aiImportStatus.textContent = data.message || "Draft ready. Review and save.";
+    dom.aiImportImage.value = "";
+  } catch (err) {
+    dom.aiImportStatus.className = "text-danger small mt-2";
+    dom.aiImportStatus.textContent = err.message || "Failed to import question from image.";
+  } finally {
+    dom.aiImportBtn.disabled = false;
+  }
+}
+
+async function runAiImageBatchImport() {
+  if (!dom.aiImportBatchBtn || !dom.aiImportBtn || !dom.aiImportTest || !dom.aiImportImage || !dom.aiImportStatus) return;
+  const selectedTest = dom.aiImportTest.value;
+  const files = dom.aiImportImage.files ? Array.from(dom.aiImportImage.files) : [];
+
+  if (!selectedTest) {
+    dom.aiImportStatus.className = "text-warning small mt-2";
+    dom.aiImportStatus.textContent = "Select a test first.";
+    return;
+  }
+  if (!files.length) {
+    dom.aiImportStatus.className = "text-warning small mt-2";
+    dom.aiImportStatus.textContent = "Select one or more images first.";
+    return;
+  }
+
+  dom.aiImportBatchBtn.disabled = true;
+  dom.aiImportBtn.disabled = true;
+  if (dom.aiPreviewSave) dom.aiPreviewSave.disabled = true;
+
+  let added = 0;
+  let failed = 0;
+  const failures = [];
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    dom.aiImportStatus.className = "text-info small mt-2";
+    dom.aiImportStatus.textContent = `Batch ${i + 1}/${files.length}: processing ${file.name}...`;
+
+    const formData = new FormData();
+    formData.append("image", file);
+    formData.append("attach_source_image", dom.aiImportAttachImage && dom.aiImportAttachImage.checked ? "on" : "off");
+
+    try {
+      const draftRes = await fetch(`/api/tests/${encodeURIComponent(selectedTest)}/ai-import-question`, {
+        method: "POST",
+        body: formData
+      });
+      const draftData = await draftRes.json().catch(() => ({}));
+      if (!draftRes.ok || !draftData.question) {
+        throw new Error(draftData.error || "AI draft failed");
+      }
+
+      const commitRes = await fetch(`/api/tests/${encodeURIComponent(selectedTest)}/ai-import-question/commit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: draftData.question.question || "",
+          options: Array.isArray(draftData.question.options) ? draftData.question.options : [],
+          correct_index: Number(draftData.question.correct_index ?? 0),
+          explanation: draftData.question.explanation || "",
+          image: draftData.question.image || ""
+        })
+      });
+      const commitData = await commitRes.json().catch(() => ({}));
+      if (!commitRes.ok) {
+        throw new Error(commitData.error || "Save failed");
+      }
+
+      added += 1;
+    } catch (err) {
+      failed += 1;
+      failures.push(`${file.name}: ${err.message || "Unknown error"}`);
+    }
+  }
+
+  dom.aiImportImage.value = "";
+  clearAiDraft();
+  await loadTests();
+
+  if (failed === 0) {
+    dom.aiImportStatus.className = "text-success small mt-2";
+    dom.aiImportStatus.textContent = `Batch complete: added ${added}/${files.length} questions.`;
+  } else {
+    const preview = failures.slice(0, 3).join(" | ");
+    const more = failures.length > 3 ? ` (+${failures.length - 3} more)` : "";
+    dom.aiImportStatus.className = "text-warning small mt-2";
+    dom.aiImportStatus.textContent = `Batch complete: added ${added}, failed ${failed}. ${preview}${more}`;
+  }
+
+  dom.aiImportBatchBtn.disabled = false;
+  dom.aiImportBtn.disabled = false;
+  if (dom.aiPreviewSave) dom.aiPreviewSave.disabled = false;
+}
+
+function clearAiDraft() {
+  aiDraft = null;
+  if (dom.aiPreviewBox) dom.aiPreviewBox.classList.add("d-none");
+  if (dom.aiPreviewQuestion) dom.aiPreviewQuestion.value = "";
+  if (dom.aiPreviewExplanation) dom.aiPreviewExplanation.value = "";
+  if (dom.aiPreviewOptions) dom.aiPreviewOptions.innerHTML = "";
+}
+
+function addAiPreviewOption(text = "") {
+  if (!dom.aiPreviewOptions) return;
+  const row = document.createElement("div");
+  row.className = "d-flex align-items-center gap-2 mb-2";
+  row.innerHTML = `
+    <input type="radio" name="ai-preview-correct" class="form-check-input mt-0">
+    <input type="text" class="form-control ai-preview-option" value="">
+    <button type="button" class="btn btn-sm btn-outline-danger">×</button>
+  `;
+  const textInput = row.querySelector(".ai-preview-option");
+  if (textInput) textInput.value = text;
+  const removeBtn = row.querySelector("button");
+  if (removeBtn) {
+    removeBtn.addEventListener("click", () => {
+      row.remove();
+      ensureAiPreviewHasCheckedOption();
+    });
+  }
+  dom.aiPreviewOptions.appendChild(row);
+  ensureAiPreviewHasCheckedOption();
+}
+
+function ensureAiPreviewHasCheckedOption() {
+  if (!dom.aiPreviewOptions) return;
+  const radios = dom.aiPreviewOptions.querySelectorAll('input[type="radio"]');
+  if (!radios.length) return;
+  const hasChecked = Array.from(radios).some(r => r.checked);
+  if (!hasChecked) {
+    radios[0].checked = true;
+  }
+}
+
+function populateAiDraftEditor() {
+  if (!aiDraft || !dom.aiPreviewBox || !dom.aiPreviewQuestion || !dom.aiPreviewOptions || !dom.aiPreviewExplanation) return;
+
+  dom.aiPreviewQuestion.value = aiDraft.question || "";
+  dom.aiPreviewExplanation.value = aiDraft.explanation || "";
+  dom.aiPreviewOptions.innerHTML = "";
+  const options = Array.isArray(aiDraft.options) ? aiDraft.options : [];
+  options.forEach((opt) => addAiPreviewOption(opt));
+
+  const radios = dom.aiPreviewOptions.querySelectorAll('input[type="radio"]');
+  if (radios.length) {
+    const idx = Number(aiDraft.correct_index);
+    if (Number.isInteger(idx) && idx >= 0 && idx < radios.length) {
+      radios[idx].checked = true;
+    } else {
+      radios[0].checked = true;
+    }
+  }
+
+  dom.aiPreviewBox.classList.remove("d-none");
+}
+
+function collectAiDraftFromEditor() {
+  if (!dom.aiPreviewQuestion || !dom.aiPreviewOptions || !dom.aiPreviewExplanation) return null;
+  const question = dom.aiPreviewQuestion.value.trim();
+  const rows = Array.from(dom.aiPreviewOptions.children);
+  const options = [];
+  let correctIndex = -1;
+
+  rows.forEach((row) => {
+    const radio = row.querySelector('input[type="radio"]');
+    const input = row.querySelector(".ai-preview-option");
+    const value = input ? input.value.trim() : "";
+    if (!value) return;
+    if (radio && radio.checked) {
+      correctIndex = options.length;
+    }
+    options.push(value);
+  });
+
+  if (!question || options.length < 2) return null;
+  if (correctIndex < 0 || correctIndex >= options.length) correctIndex = 0;
+
+  return {
+    question,
+    options,
+    correct_index: correctIndex,
+    explanation: dom.aiPreviewExplanation.value.trim()
+  };
+}
+
+async function commitAiDraft() {
+  if (!aiDraft || !dom.aiPreviewSave || !dom.aiImportStatus) return;
+  const compiled = collectAiDraftFromEditor();
+  if (!compiled) {
+    dom.aiImportStatus.className = "text-warning small mt-2";
+    dom.aiImportStatus.textContent = "Review draft is incomplete. Add question and at least 2 options.";
+    return;
+  }
+
+  dom.aiPreviewSave.disabled = true;
+  dom.aiImportStatus.className = "text-info small mt-2";
+  dom.aiImportStatus.textContent = "Saving question to test...";
+
+  try {
+    const response = await fetch(`/api/tests/${encodeURIComponent(aiDraft.testId)}/ai-import-question/commit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...compiled,
+        image: aiDraft.image || ""
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to save question.");
+    }
+
+    dom.aiImportStatus.className = "text-success small mt-2";
+    dom.aiImportStatus.textContent = data.message || "Question saved to test.";
+    clearAiDraft();
+    await loadTests();
+  } catch (err) {
+    dom.aiImportStatus.className = "text-danger small mt-2";
+    dom.aiImportStatus.textContent = err.message || "Failed to save question.";
+  } finally {
+    dom.aiPreviewSave.disabled = false;
   }
 }
